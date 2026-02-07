@@ -13,6 +13,7 @@ Este directorio contiene la documentación del repositorio demoscene-repo: guía
 | [05-graficos-amiga.md](05-graficos-amiga.md) | Gráficos en Amiga: bitmap, copper, blitter, sprites, modos de pantalla |
 | [06-catalogo-efectos.md](06-catalogo-efectos.md) | Catálogo de todos los efectos del repositorio con descripción de cada uno |
 | [07-referencia-apis.md](07-referencia-apis.md) | Referencia rápida de APIs (effect, gfx, blitter, copper, 2d, 3d) |
+| **[tutoriales/](tutoriales/README.md)** | **Tutorial por efecto**: cómo se consigue cada uno y qué trucos y técnicas se usan (para principiantes) |
 
 ## Contexto
 
@@ -23,4 +24,5 @@ La información se ha deducido del código fuente del repositorio y del *Amiga H
 - Para **empezar**: leer 01-introduccion y 02-sistema-efectos.
 - Para **gráficos 2D/3D**: 03-libreria-2d, 04-libreria-3d y 05-graficos-amiga.
 - Para **elegir o entender un efecto**: 06-catalogo-efectos.
+- Para **aprender paso a paso cada efecto** (trucos y técnicas): [tutoriales/](tutoriales/README.md).
 - Para **consultar funciones**: 07-referencia-apis.
