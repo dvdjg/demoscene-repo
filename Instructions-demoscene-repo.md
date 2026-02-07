@@ -1,5 +1,10 @@
 Run from WSL 2:
 
+git config user.name "dvdjg"
+git config user.email "dvdjg@hotmail.com"
+
+
+
 	sudo apt install ./demoscene-toolchain_2025.09.21+1_amd64.deb
 	git lfs install # Fails
 
