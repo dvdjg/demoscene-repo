@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Invoca efectos del demoscene (make run / debug / build / clean).
+# Requisitos: paquete demoscene-toolchain en PREFIX (por defecto /opt/amiga),
+# dependencias del README (git-lfs, gcc, make, python3, tmux, …).
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO_ROOT"
+
+usage() {
+  cat <<'EOF'
+
+Uso: run-effect [opciones] <nombre-efecto> [acción]
+
+Acciones:
+  run        Compila si hace falta y ejecuta el efecto (fs-uae + tmux). Por defecto.
+  debug      Compila y arranca fs-uae + m68k-amigaos-gdb dentro de tmux (depuración en terminal).
+  gdbserver  Compila y arranca el servidor de depuración en localhost:8888 (mismo comando que
+             la tarea «gdbserver» de VS Code; úsalo con la configuración «Amiga GDB»).
+  build      Solo compila (make).
+  clean      make clean en el directorio del efecto.
+
+Opciones:
+  -m MODEL   A500 o A1200 (por defecto A500 o variable MODEL).
+  -p PREFIX  Instalación del toolchain (por defecto /opt/amiga).
+  -h         Esta ayuda.
+
+Variables de entorno:
+  MODEL, PATH ya preparados por «source activate» (este script lo hace solo).
+
+Ejemplos:
+  ./run-effect color-cycling
+  ./run-effect color-cycling debug
+  ./run-effect color-cycling gdbserver
+  ./run-effect -m A1200 ball run
+
+Si el build falla tras mover el repositorio, regenera dependencias:
+  find . -name '.*.D' -type f -delete
+EOF
+}
+
+MODEL="${MODEL:-A500}"
+PREFIX="${PREFIX:-/opt/amiga}"
+ACTION="run"
+EFFECT=""
+
+while getopts "hm:p:" opt; do
+  case "$opt" in
+    h) usage; exit 0 ;;
+    m) MODEL="$OPTARG" ;;
+    p) PREFIX="$OPTARG" ;;
+    *) usage; exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+case "${1:-}" in
+  run|debug|gdbserver|build|clean)
+    EFFECT="${2:-}"
+    ACTION="$1"
+    ;;
+  *)
+    EFFECT="${1:-}"
+    ACTION="${2:-run}"
+    ;;
+esac
+
+if [[ -z "$EFFECT" ]]; then
+  echo "Error: falta el nombre del efecto (carpeta bajo effects/)." >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ "$ACTION" != @(run|debug|gdbserver|build|clean) ]]; then
+  echo "Error: acción desconocida «$ACTION»." >&2
+  exit 1
+fi
+
+EFFECT_DIR="$REPO_ROOT/effects/$EFFECT"
+if [[ ! -d "$EFFECT_DIR" ]]; then
+  echo "Error: no existe el efecto «$EFFECT» ($EFFECT_DIR)." >&2
+  exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$REPO_ROOT/activate" -m "$MODEL" -p "$PREFIX"
+
+if [[ -z "${DEMOSCENE_ROOT:-}" ]]; then
+  echo "Error: no se pudo activar el entorno (¿falta demoscene-toolchain o paquetes del README?)." >&2
+  exit 1
+fi
+
+cd "$EFFECT_DIR"
+export MODEL
+
+case "$ACTION" in
+  run)        make run ;;
+  debug)      make debug ;;
+  gdbserver)  make debug DEBUGGER=gdbserver ;;
+  build)      make ;;
+  clean)      make clean ;;
+esac

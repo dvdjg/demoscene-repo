@@ -11,7 +11,7 @@
             "program": "${config:effect}.exe.dbg",
             "cwd": "${workspaceFolder}/effects/${config:effect}",
             "MIMode": "gdb",
-            "miDebuggerPath": "m68k-amigaos-gdb",
+            "miDebuggerPath": "/opt/amiga/bin/m68k-amigaos-gdb",
             "miDebuggerServerAddress": "localhost:8888",
             "setupCommands": [
                 { 

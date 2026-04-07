@@ -2,10 +2,25 @@
 
 import argparse
 import os
+import re
 import shlex
+import socket
 import subprocess
+import sys
+import time
 from pathlib import Path
 from libtmux import Server, Session, exc
+
+
+def WaitForTcpPort(host, port, timeout=90.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return True
+        except OSError:
+            time.sleep(0.15)
+    return False
 
 
 def HerePath(*components):
@@ -20,6 +35,27 @@ SESSION = 'fsuae'
 GDBSERVER = 'uaedbg.py'
 REMOTE = 'localhost:8888'
 TMUX_CONF = HerePath('.tmux.conf')
+
+
+def CleanupStaleEmulator():
+    """Cierra sesiones tmux/fs-uae previas para evitar quedar enganchado."""
+    top = os.getenv('TOPDIR', '').strip()
+    tmux_cmd = ['tmux', '-L', SOCKET, 'kill-server']
+    if top:
+        conf = str(Path(top) / '.tmux.conf')
+        tmux_cmd = ['tmux', '-f', conf, '-L', SOCKET, 'kill-server']
+    subprocess.run(
+        tmux_cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    time.sleep(0.15)
+    if not top:
+        return
+    base = Path(top)
+    for suffix in (Path('tools') / GDBSERVER, Path('config.fs-uae')):
+        pat = re.escape(str(base / suffix))
+        subprocess.run(
+            ['pkill', '-f', pat],
+            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL)
 
 
 class Launchable():
@@ -133,6 +169,8 @@ if __name__ == '__main__':
         debugger = GDB()
         debugger.configure(args.executable)
 
+    CleanupStaleEmulator()
+
     subprocess.run(['tmux', '-f', TMUX_CONF, '-L', SOCKET, 'start-server'])
 
     server = Server(config_file=TMUX_CONF, socket_name=SOCKET)
@@ -142,6 +180,12 @@ if __name__ == '__main__':
 
     session = server.new_session(session_name=SESSION, attach=False,
                                  window_name=':0', window_command='sleep 1')
+
+    # tmux attach() needs a real TTY. IDE tasks / pipes / automation often are
+    # not a TTY — skip attach and leave the session running (user: tmux -L fsuae attach).
+    # DEMOSCENE_LAUNCH_NO_ATTACH=1 forces the same (e.g. scripts).
+    want_attach = sys.stdin.isatty() and os.environ.get(
+        'DEMOSCENE_LAUNCH_NO_ATTACH', '') not in ('1', 'yes', 'true')
 
     try:
         uae.start(session)
@@ -155,8 +199,20 @@ if __name__ == '__main__':
             session.select_window(debugger.name)
         else:
             session.select_window(args.window or par_port.name)
-        Session.attach(session)
+        if want_attach:
+            Session.attach(session)
+        elif args.debug == 'gdbserver':
+            # Salida que ve la tarea de VS Code / Cursor (uaedbg escribe en el panel tmux).
+            host, port = REMOTE.split(':')
+            if WaitForTcpPort(host, int(port)):
+                print(
+                    'Listening for gdb connection at localhost:{}'.format(port),
+                    flush=True)
+            else:
+                raise SystemExit(
+                    'timeout waiting for gdbserver on {}:{}'.format(host, port))
     except exc.TmuxObjectDoesNotExist:
         pass
     finally:
-        Server.kill(server)
+        if want_attach:
+            Server.kill(server)

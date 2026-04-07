@@ -12,8 +12,30 @@
         "showReuseMessage": true,
         "clear": true
     },
+
+    // Cursor no expande "base": "$gcc" como VS Code; usamos un matcher explícito estilo GCC.
     "problemMatcher": {
-        "base": "$gcc",
+        "owner": "gcc",
+        "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+        ],
+        "pattern": {
+            "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "severity": 4,
+            "message": 5
+        }
+    },
+
+    // Todas las tareas que invocan `make` deben activar el entorno del README
+    // (DEMOSCENE_ROOT, PATH con m68k-amigaos-*, venv de Python para launch.py).
+    // Sustituye ${config:effect} (p. ej. fileDirnameBasename en settings.json).
+    "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {}
     },
 
     // TaskConfiguration
@@ -22,22 +44,22 @@
             "label": "CLEAN",
             "detail": "Clean output files of single effect ________________________ (Shift+Cmd+C)",
             "type": "shell",
-            "command": "make clean -C ${workspaceFolder}/effects/${config:effect}",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make clean -C \"${workspaceFolder}/effects/${config:effect}\"'",
             "group": "build"
         },
         {
             "label": "CLEAN ALL",
             "detail": "Clean all output files ______________________ (Shift+Cmd+A, Shift+Cmd+C)",
             "type": "shell",
-            "command": "make clean -C ${workspaceFolder}",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make clean -C \"${workspaceFolder}\"'",
             "group": "build"
         },
         {
             "label": "BUILD",
             "detail": "Build single effect ________________________________________ (Shift+Cmd+B)",
             "type": "shell",
-            "command": "make -C ${workspaceFolder}/effects/${config:effect}",
-            "group":{
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make -C \"${workspaceFolder}/effects/${config:effect}\"'",
+            "group": {
                 "kind": "build",
                 "isDefault": true
             }
@@ -46,37 +68,50 @@
             "label": "BUILD ALL",
             "detail": "Build all effects ___________________________ (Shift+Cmd+A, Shift+Cmd+B)",
             "type": "shell",
-            "command": "make -C ${workspaceFolder}",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make -C \"${workspaceFolder}\"'",
             "group": "build"
         },
         {
             "label": "RUN",
             "detail": "Run the effect without debugging ________________________ (Shift+Cmd+R)",
             "type": "shell",
-            "command": "make run -C ${workspaceFolder}/effects/${config:effect}",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make run -C \"${workspaceFolder}/effects/${config:effect}\"'",
             "group": "none"
         },
         {
             "label": "DEBUG",
-            "detail": "Start debugging the effect _______________________________ (Shift+Cmd+D)",
-            "command": "${command:workbench.action.debug.start}",
+            "detail": "make debug (GDB en tmux, sin VS Code). Para Amiga GDB usa F5 o Run and Debug.",
+            "type": "shell",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make debug -C \"${workspaceFolder}/effects/${config:effect}\"'",
             "group": "none"
         },
         {
             "label": "gdbserver",
             "detail": "Run effect and start gdbserver on localhost:8888",
             "type": "shell",
-            "command": "make debug DEBUGGER=gdbserver -C ${workspaceFolder}/effects/${config:effect}",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make debug DEBUGGER=gdbserver -C \"${workspaceFolder}/effects/${config:effect}\"'",
             "isBackground": true,
             "problemMatcher": {
-                "base": "$gcc",
+                "owner": "cpp",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
                 "background": {
                     "activeOnStart": true,
-                    "beginsPattern": "Listening for gdb connection",
-                    "endsPattern": "Listening for gdb connection"
+                    "beginsPattern": ".",
+                    "endsPattern": "Listening for gdb connection at localhost:8888"
                 }
             },
             "group": "none"
-        },
+        }
     ]
 }

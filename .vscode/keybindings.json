@@ -22,8 +22,7 @@
     },
     {
         "key": "shift+cmd+d",
-        "command": "workbench.action.tasks.runTask",
-        "args": "DEBUG"
+        "command": "workbench.action.debug.start"
     },
     {
         "key": "shift+cmd+t",
