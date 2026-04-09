@@ -1,4 +1,11 @@
 /*
+ * Software 3D math (lib3d): transforms, sorting — CPU-side; drawing uses blitter/copper.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
+/*
  * UpdateFaceVisibility — Back-face culling e iluminación por cara para Object3D.
  * Para cada cara calcula el producto escalar (normal · vector hacia cámara); si >= 0
  * la cara es visible. Entonces calcula un factor de luz con la tabla InvSqrt[] (sin usar

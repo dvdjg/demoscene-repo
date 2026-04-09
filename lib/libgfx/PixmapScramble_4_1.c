@@ -1,5 +1,18 @@
+/*
+ * Graphics helper (libgfx): bitmaps, lines, copper helpers, etc.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <pixmap.h>
 
+/*
+ * PixmapScramble_4_1 — reorder 4bpp chunky nibbles for c2p / blitter interleave (PM_CMAP4).
+ *
+ * Masks m0/m1 split odd/even bit lanes; shifts swap nibbles into plane-friendly layout.
+ * d6/d7 hold constants across the loop. CPU-bound; run once after filling pixmap.
+ */
 void PixmapScramble_4_1(const PixmapT *pixmap) {
   if (pixmap->type == PM_CMAP4) {
     u_int *data = pixmap->pixels;

@@ -1,3 +1,20 @@
+/*
+ * FlatShadeConvex — convex-only flat shading: edge rasterization + global XOR fill.
+ *
+ * For a closed convex mesh, each silhouette edge borders exactly one front-facing
+ * triangle; toggling edge flags per face (XOR) leaves a non-zero EDGE->flags only on
+ * boundary edges. UpdateEdgeVisibilityConvex does that instead of rasterizing filled
+ * polygons — fewer blits than flatshade.c’s face loop.
+ *
+ * DrawObject walks visible edges once: blitter line mode draws into bitplanes 0..3
+ * according to the four nibble bits of edgeColor (same encoding as face colour).
+ * BitmapFillFast then runs one reverse XOR fill from the bottom-right corner of the
+ * combined plane buffer so all closed regions become solid (classic “even-odd” fill).
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <strings.h>
 #include "effect.h"
 #include "blitter.h"
@@ -42,6 +59,10 @@ static void Kill(void) {
   DeleteObject3D(cube);
 }
 
+/*
+ * For each front face, XOR face->flags into both endpoints of each edge. Interior
+ * edges are touched twice (cancel); silhouette edges keep a non-zero edgeColor.
+ */
 static void UpdateEdgeVisibilityConvex(Object3D *object) {
   register char s asm("d2") = 1;
 
@@ -74,6 +95,7 @@ static void UpdateEdgeVisibilityConvex(Object3D *object) {
   } while (*group);
 }
 
+/* Same projection as flatshade.c (nodes with flags after edge pass). */
 #define MULVERTEX1(D, E) {                      \
   short t0 = (*v++) + y;                        \
   short t1 = (*v++) + x;                        \
@@ -142,6 +164,10 @@ static void TransformVertices(Object3D *object) {
   } while (*group);
 }
 
+/*
+ * Draw each visible edge into the four bitplanes in one pass: bltcpt walks plane
+ * base + k * bplSize for bits 0..3 of edgeColor (line drawn only if bit set).
+ */
 static void DrawObject(void *planes, Object3D *object,
                        CustomPtrT custom_ asm("a6"))
 {
@@ -190,7 +216,7 @@ static void DrawObject(void *planes, Object3D *object,
           }
 
           if (y0 == y1)
-            continue;
+            continue; /* horizontal edges ignored for XOR parity */
 
           if (y0 > y1) {
             swapr(x0, x1);
@@ -254,6 +280,7 @@ static void DrawObject(void *planes, Object3D *object,
   } while (*group);
 }
 
+/* One vertical blit stack clears all planes (height × depth as blit height). */
 static void BitmapClearFast(BitmapT *dst) {
   u_short height = (short)dst->height * (short)dst->depth;
   u_short bltsize = (height << 6) | (dst->bytesPerRow >> 1);
@@ -271,6 +298,7 @@ static void BitmapClearFast(BitmapT *dst) {
   custom->bltsize = bltsize;
 }
 
+/* After all edge outlines: one reverse XOR fill closes regions (convex ⇒ no holes). */
 static void BitmapFillFast(BitmapT *dst) {
   void *bltpt = dst->planes[0] + (dst->bplSize * DEPTH) - 2;
   u_short bltsize = (0 << 6) | (WIDTH >> 4);
@@ -297,7 +325,7 @@ PROFILE(Fill);
 static void Render(void) {
   BitmapClearFast(screen[active]);
 
-  /* ball: 92 points, 180 polygons, 270 edges */
+  /* pilka mesh: 92 points, 180 polygons, 270 edges */
   cube->rotate.x = cube->rotate.y = cube->rotate.z = frameCount * 8;
 
   ProfilerStart(Transform);

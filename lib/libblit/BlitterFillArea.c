@@ -1,5 +1,22 @@
+/*
+ * Blitter-oriented code (libblit): DMA-friendly operations.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <blitter.h>
 
+/*
+ * BlitterFillArea — fill a rectangle (or whole plane) with a solid color using
+ * blitter fill mode (SRCA + A_TO_D + FILL_OR + BLITREVERSE).
+ *
+ * area: if NULL, fills entire bitmap plane from end pointer backward (clears to 0
+ * with fill carry). If set, computes bottom-right word address and BLTSIZE for
+ * a subrect. BLITREVERSE: DMA walks backward so overlapping fills are safe.
+ * C equivalent: memset on planar data is wrong — must set whole words per row;
+ * blitter fill is the standard OCS way to clear large planes.
+ */
 void BlitterFillArea(const BitmapT *bitmap, short plane, const Area2D *area) {
   void *bltpt = bitmap->planes[plane];
   u_short bltmod, bltsize;

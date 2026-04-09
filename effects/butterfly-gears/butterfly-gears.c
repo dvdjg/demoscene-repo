@@ -1,3 +1,10 @@
+/*
+ * butterfly-gears — Butterfly + mechanical gears motion.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <bitmap.h>
 #include <blitter.h>

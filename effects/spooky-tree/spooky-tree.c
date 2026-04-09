@@ -1,3 +1,12 @@
+/*
+ * SpookyTree — parallax tree background + **many hardware sprites** (big/small ghosts).
+ *
+ * `SpriteT` arrays index animation frames; `softsprite` helpers composite or move layers.
+ * Bitmap playfield from `tree-data`; palette `tree-pal`. Copper list sets BPL pointers;
+ * sprite positions updated per frame for bobbing ghosts around the tree scene.
+ *
+ * HRM (sprites, playfields): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <copper.h>
 #include <palette.h>

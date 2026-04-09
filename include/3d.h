@@ -1,4 +1,11 @@
 /*
+ * Header: 3d.h — see includes and call sites in the repo.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
+/*
  * 3d.h — API de la librería 3D: puntos, matrices 3×3+traslación, mallas (Mesh3D),
  * objetos (Object3D), caras y aristas. Transformaciones, visibilidad de caras (back-face culling),
  * ordenación por Z e iluminación por cara. Los datos de malla suelen generarse con obj2c.

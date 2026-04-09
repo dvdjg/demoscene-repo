@@ -1,3 +1,11 @@
+/*
+ * Effect: UVMap — copper-assisted chunky UV mapping with split texture and C2P.
+ *
+ * A generated 68000 routine fills a chunky buffer; a multi-phase Blitter interrupt
+ * handler performs chunky-to-planar into double-height bitplanes; the Copper
+ * doubles scanlines (bplmod tricks) and may tweak BPLCON1 for half-pixel mode.
+ * HRM: Copper, Blitter, DIW/DDF — https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -5,38 +13,58 @@
 #include <system/interrupt.h>
 #include <system/memory.h>
 
+/* Logical UV map and display: 160×100 logical, doubled vertically by Copper. */
 #define WIDTH 160
 #define HEIGHT 100
 #define DEPTH 4
+/* 1: full subpixel expand in blit; 0: cheaper path with extra BPLCON1 control. */
 #define FULLPIXEL 1
 
+/* Hi/Lo textures store pre-expanded bit patterns, so render code can compose
+ * final chunky words with OR operations instead of expensive bit extraction. */
 static u_short *textureHi, *textureLo;
+/* Double-buffered playfield bitmaps (chunky temp + planar targets). */
 static BitmapT *screen[2];
+/* Which screen[] buffer is being written this frame. */
 static u_short active = 0;
 static CopListT *cp;
+/* Copper handles to patch BPLxPT each frame after C2P phases complete. */
 static CopInsPairT *bplptr;
 
 #include "data/texture-16-1.c"
 #include "data/gradient.c"
 #include "data/uvmap.c"
 
+/* Size of generated code buffer (words × 2 bytes; see MakeUVMapRenderCode). */
 #define UVMapRenderSize (WIDTH * HEIGHT / 2 * 10 + 2)
+/* Runtime-generated function. Equivalent C would iterate uvmap and assemble
+ * pixels per nibble/byte, but self-modified machine code is faster on 68000. */
 void (*UVMapRender)(u_short *chunkyEnd asm("a0"),
                     u_short *textureHi asm("a1"),
                     u_short *textureLo asm("a2"));
 
-/* [0 0 0 0 a0 a1 a2 a3] => [a0 a1 0 0 a2 a3 0 0] x 2 */
+/*
+ * PixelHi / PixelLo — lookup tables: 4-bit colour index → two u_short patterns.
+ *
+ * Used to duplicate nibbles into hi/lo streams for OR-based texture combine.
+ * [0 0 0 0 a0 a1 a2 a3] => [a0 a1 0 0 a2 a3 0 0] × 2
+ */
 static u_short PixelHi[16] = {
   0x0000, 0x0404, 0x0808, 0x0c0c, 0x4040, 0x4444, 0x4848, 0x4c4c,
   0x8080, 0x8484, 0x8888, 0x8c8c, 0xc0c0, 0xc4c4, 0xc8c8, 0xcccc,
 };
 
-/* [0 0 0 0 b0 b1 b2 b3] => [ 0 0 b0 b1 0 0 b2 b3] x 2 */
+/* [0 0 0 0 b0 b1 b2 b3] => [ 0 0 b0 b1 0 0 b2 b3] × 2 */
 static u_short PixelLo[16] = {
   0x0000, 0x0101, 0x0202, 0x0303, 0x1010, 0x1111, 0x1212, 0x1313, 
   0x2020, 0x2121, 0x2222, 0x2323, 0x3030, 0x3131, 0x3232, 0x3333, 
 };
 
+/*
+ * PixmapToTexture — convert 8-bit indexed pixmap to split hi/lo u_short streams.
+ *
+ * Duplicates rows (hi0/hi1, lo0/lo1) for scrolling via pointer arithmetic in Render.
+ */
 static void PixmapToTexture(const PixmapT *image,
                             u_short *imageHi, u_short *imageLo) 
 {
@@ -59,6 +87,10 @@ static void PixmapToTexture(const PixmapT *image,
   }
 }
 
+/*
+ * MakeUVMapRenderCode — emit 68000 into UVMapRender: movem prologue, inner loops,
+ * epilogue. Uses pre-scrambled uvmap tail so pixel order matches C2P layout.
+ */
 static void MakeUVMapRenderCode(void) {
   u_short *code = (void *)UVMapRender;
   u_short *data = uvmap + WIDTH * HEIGHT;
@@ -91,16 +123,29 @@ static void MakeUVMapRenderCode(void) {
   *code++ = 0x4e75; /* rts */
 }
 
+/*
+ * c2p — state for incremental chunky-to-planar across Blitter interrupt re-entries.
+ *
+ * phase: which C2P sub-step runs next (see switch in ChunkyToPlanar).
+ * bpl:   current screen's plane pointer array (set from Render).
+ */
 static struct {
   short phase;
   void **bpl;
 } c2p = { 256, NULL };
 
+/* Chunky buffer byte count: (WIDTH/2)×HEIGHT (two 4bpp pixels per byte). */
 #define BLTSIZE ((WIDTH / 2) * HEIGHT) /* 8000 bytes */
 
 /* If you think you can speed it up (I doubt it) please first look into
  * `c2p_2x1_4bpl_mangled_fast_blitter.py` in `prototypes/c2p`. */
 
+/*
+ * ChunkyToPlanar — INTB_BLIT handler: one Blitter operation per interrupt until done.
+ *
+ * Falls through case labels intentionally (no break) to chain setup → bltsize kicks.
+ * Final phases patch Copper MOVEs for BPLxPT. See large comment block inside function.
+ */
 static void ChunkyToPlanar(void) {
   register void **bpl asm("a0") = c2p.bpl;
 
@@ -225,6 +270,11 @@ static void ChunkyToPlanar(void) {
   c2p.phase++;
 }
 
+/*
+ * MakeCopperList — Copper: bitplanes, gradient colours per scanline, line doubling.
+ *
+ * Waits per line set bpl1mod/bpl2mod for vertical stretch; optional BPLCON1 shuffle.
+ */
 static CopListT *MakeCopperList(void) {
   CopListT *cp = NewCopList(900 + 256);
   short *pixels = gradient.pixels;
@@ -249,6 +299,9 @@ static CopListT *MakeCopperList(void) {
   return CopListFinish(cp);
 }
 
+/*
+ * Init — allocate double buffers, build JIT, textures, copper; hook Blitter interrupt.
+ */
 static void Init(void) {
   screen[0] = NewBitmap(WIDTH * 2, HEIGHT * 2, DEPTH, BM_CLEAR);
   screen[1] = NewBitmap(WIDTH * 2, HEIGHT * 2, DEPTH, BM_CLEAR);
@@ -276,6 +329,9 @@ static void Init(void) {
   EnableINT(INTF_BLIT);
 }
 
+/*
+ * Kill — disable DMA/interrupts, free all Init allocations.
+ */
 static void Kill(void) {
   DisableDMA(DMAF_COPPER | DMAF_RASTER | DMAF_BLITTER);
 
@@ -293,6 +349,11 @@ static void Kill(void) {
 
 PROFILE(UVMap);
 
+/*
+ * Render — run JIT into chunky region of plane 0, reset C2P state, kick first Blitter pass.
+ *
+ * active toggles double buffer; ChunkyToPlanar continues via interrupts.
+ */
 static void Render(void) {
   int size = texture.width * texture.height;
   short offset = (frameCount * 127) & (size - 1);
@@ -314,4 +375,5 @@ static void Render(void) {
   active ^= 1;
 }
 
+/* C2P continues asynchronously via Blitter IRQ after Render returns. */
 EFFECT(UVMap, NULL, NULL, Init, Kill, Render, NULL);

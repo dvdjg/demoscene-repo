@@ -1,3 +1,9 @@
+/*
+ * Custom chip INTENA/INTREQ — enable bits and clear interrupt latches (SETCLR idiom).
+ *
+ * intena_/intreq_: write-only mirrors; use INTF_SETCLR to set, raw value to clear.
+ * See HRM "Interrupt Control" and system/kernel/intr-entry.S for dispatch.
+ */
 #ifndef __SYSTEM_INTERRUPT_H__
 #define __SYSTEM_INTERRUPT_H__
 
@@ -7,7 +13,6 @@
 #include <custom.h>
 #include <types.h>
 
-/* All macros below take or'ed INTF_* flags. */
 static inline void EnableINT(u_short x) { custom->intena_ = INTF_SETCLR | x; }
 static inline void DisableINT(u_short x) { custom->intena_ = x; }
 static inline void CauseIRQ(u_short x) { custom->intreq_ = INTF_SETCLR | x; }

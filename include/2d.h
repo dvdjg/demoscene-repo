@@ -1,4 +1,11 @@
 /*
+ * Header: 2d.h — see includes and call sites in the repo.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
+/*
  * 2d.h — API de la librería 2D: matrices 2×2+traslación, transformación de puntos,
  * ventana de recorte (ClipWin), recorte de líneas (Liang-Barsky) y polígonos (Sutherland-Hodgman).
  * Formas (ShapeT) para conjuntos de puntos y polígonos indexados.

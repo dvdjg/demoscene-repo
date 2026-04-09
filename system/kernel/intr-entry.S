@@ -1,8 +1,34 @@
+/*
+ * Low-level Amiga autovector interrupt dispatch (levels 1–6).
+ *
+ * Purpose: hardware delivers IRQs to 68000 autovectors; we map INTB_* bits in
+ * INTREQR (masked by INTENAR) to per-IRQ handlers in IntVec. EnterIntr clears
+ * the pending bit in INTREQ and calls the C handler with user data.
+ *
+ * Why assembly: IRQ entry must be cycle-tight, preserve exactly the registers
+ * the ABI expects, and touch custom.intreq — that is textbook hand-written
+ * interrupt glue on Amiga.
+ *
+ * MULTITASK: optional reschedule path when returning from IPL0 to task context.
+ *
+ * HRM (interrupts, INTREQ/INTENA): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <asm.h>
 #include <config.h>
 #include <custom_regdef.h>
 
 .macro  FIRST   intb
+        /* Prologue for each autovector level:
+         * - save scratch regs used by dispatcher,
+         * - read pending interrupts (INTREQR & INTENAR),
+         * - test first candidate bit and branch to EnterIntr if set.
+         *
+         * Conceptual C:
+         *   save(d0,d1,a0,a1);
+         *   d1 = intb;
+         *   d0 = custom->intreqr & custom->intenar;
+         *   if (d0 & (1 << d1)) goto EnterIntr;
+         */
         movem.l d0-d1/a0-a1,-(sp)
         moveq   #\intb,d1
         move.w  custom+intreqr,d0
@@ -12,12 +38,14 @@
 .endm
 
 .macro  NEXT    irq
+        /* Scan next candidate bit on same interrupt level. */
         addq.w  #1,d1
         btst    d1,d0
         jne     _L(EnterIntr)
 .endm
 
 .macro  FINISH
+        /* Nothing matched: restore and return. */
         jra     _L(LeaveIntr)
 .endm
 
@@ -56,6 +84,15 @@ END(AmigaLvl6Handler)
 # Main part of interrupt handler
 
 ENTRY(EnterIntr)
+        /*
+         * d1 = INTB_* bit index selected by FIRST/NEXT.
+         *
+         * Conceptual C:
+         *   uint16_t mask = 1u << d1;
+         *   custom->intreq = mask;      // acknowledge/clear source
+         *   IntVecEntry *iv = &IntVec[d1];
+         *   iv->code(iv->data);
+         */
         /* Make INTF_* mask, and clear pending interrupt. */
         clr.w   d0
         bset    d1,d0
@@ -91,8 +128,13 @@ ENTRY(LeaveIntr)
         jeq     .Lnoswitch
 
         clr.b   (a0)                    /* clear reschedule flag */
-        movem.l (sp)+,d0-d1/a0-a1       /* restore registers */
-        jra     _L(YieldHandler)+4      /* force a task switch (skip or.w to sr) */
+        movem.l (sp)+,d0-d1/a0-a1       /* restore dispatcher registers */
+        /*
+         * Jump into YieldHandler after its initial SR mask instruction (+4):
+         * we already forced IPL=7 above, so re-executing `or.w #0x0700,sr`
+         * is redundant.
+         */
+        jra     _L(YieldHandler)+4      /* force a task switch */
 #endif
 
 .Lnoswitch:
@@ -126,6 +168,11 @@ END(DummyInterruptHandler)
 
 .macro  SAVECTX
         /* assumes SR and PC are already pushed on stack */
+        /*
+         * Save full task context in layout expected by TaskSwitch():
+         *   [USP][D0..A6][...hardware-pushed SR/PC...]
+         * Equivalent to a "software context frame".
+         */
         or.w    #0x0700,sr              /* mask all interrupts */
         movem.l d0-a6,-(sp)             /* save D0-A6 registers */
         move.l  usp,a0                  /* save USP register */
@@ -135,6 +182,7 @@ END(DummyInterruptHandler)
 .endm
 
 .macro  LOADCTX
+        /* Reverse SAVECTX and return with RTE (restores SR+PC atomically). */
         move.l  _L(CurrentTask),a0      /* load current task pointer */
         move.l  (a0),sp                 /* restore stack pointer */
         move.l  (sp)+,a0                /* restore USP register */

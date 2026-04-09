@@ -1,3 +1,17 @@
+/*
+ * Rotator — affine/rect-in-circle texture mapping + split hi/lo chunky + IRQ C2P.
+ *
+ * Same family as ball/uvmap: PixelHi/PixelLo expand 4-bit indices to two u_short
+ * streams; RenderRotator (asm) walks the texture with U,V,dU,dV from Rotator() —
+ * rectangle corners inscribed in a circle, animated via radius/alfa/beta.
+ *
+ * Chunky lives in plane 0; ChunkyToPlanar runs as INTB_BLIT chain (c2p_phase) like
+ * uvmap. MakeCopperList doubles scanlines (negative bplmod) for display height.
+ * Bitmap is WIDTH*2 × HEIGHT*2 in CHIP after expand.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -17,6 +31,7 @@ static __code short active = 0;
 static __code volatile short c2p_phase;
 static __code short c2p_active;
 static __code void **c2p_bpl;
+/* Doubled texture in CHIP for arbitrary U/V start (wrap within second half). */
 static __code u_short *textureHi, *textureLo;
 
 #include "data/rork-128.c"
@@ -64,6 +79,10 @@ static void PixmapToTexture(u_short *imageHi, u_short *imageLo) {
 
 #define C2P_LAST 7
 
+/*
+ * Blitter IRQ: cases 0→1 and 2→3 fall through (setup then bltsize kick); case 6
+ * patches BPL pointers and runs the copper list for line-doubled output.
+ */
 static void ChunkyToPlanar(CustomPtrT custom_) {
   register void **bpl = c2p_bpl;
 
@@ -191,6 +210,7 @@ static void ChunkyToPlanarWait(void) {
     continue;
 }
 
+/* Line doubling from y+28: matches SetupPlayfield Y(28) vertical offset. */
 static CopListT *MakeCopperList(short active) {
   CopListT *cp = NewCopList(HEIGHT * 2 * 3 + 50);
   short i;
@@ -308,7 +328,7 @@ static void Rotator(void) {
 }
 
 static void Render(void) {
-  /* screen's bitplane #0 is used as a chunky buffer */
+  /* Plane 0 holds scrambled chunky until C2P IRQ chain completes. */
   ProfilerStart(Rotator);
   Rotator();
   ProfilerStop(Rotator);

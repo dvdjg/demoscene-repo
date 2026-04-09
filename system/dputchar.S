@@ -1,3 +1,16 @@
+/*
+ * DPutChar — parallel port debug output via CIA-driven strobing (PRB).
+ *
+ * Purpose: bit-bang the printer parallel port for debug cables (e.g. remote
+ * printf). The original comment references E-cycle timing; the code inserts
+ * explicit idle reads to meet hold/setup requirements on the CIA port lines.
+ *
+ * Why assembly: the sequence is timing-sensitive; C would obscure the exact
+ * instruction timing. Mirrors NDK ddebug.lib PRawPutChar behavior.
+ *
+ * Related reading: https://lallafa.de/blog/2015/09/amiga-parallel-port-how-fast-can-you-go/
+ * HRM (CIA I/O): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 # Reliable transfers may only happen 3 or more E-cycles basis.
 # http://lallafa.de/blog/2015/09/amiga-parallel-port-how-fast-can-you-go/
 

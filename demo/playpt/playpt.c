@@ -1,3 +1,9 @@
+/*
+ * ProTracker test effect: minimal music-only scene (PT player + CIA).
+ *
+ * Purpose: validates the replay routine and sample layout; optional DELTA
+ * compressed samples are expanded in Load.
+ */
 #include <effect.h>
 #include <custom.h>
 #include <ptplayer.h>

@@ -1,5 +1,16 @@
+/*
+ * Blitter-oriented code (libblit): DMA-friendly operations.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <blitter.h>
 
+/*
+ * Deferred blit state for sub-rectangle copy (Area2D) with optional reverse DMA.
+ * fast: word-aligned width and no shift — simple A→D path; else B+C merge with shift.
+ */
 typedef struct {
   const BitmapT *src;
   const BitmapT *dst;
@@ -23,11 +34,19 @@ static StateT state[1];
  *  - there's always enough space in `dst` to copy area from `src`
  *  - at least one of `sx` and `dx` is aligned to word boundary 
  */
+/*
+ * BlitterCopyAreaSetup — blit `area` from src to dst at (dx,dy).
+ *
+ * forward: blit direction when shift alignment differs (avoid overlap corruption).
+ * BLITREVERSE on backward path. fast path skips B channel (straight copy).
+ */
 void BlitterCopyAreaSetup(const BitmapT *dst, u_short dx, u_short dy,
                           const BitmapT *src, const Area2D *area)
 {
+  /* Destination and source fine scroll (pixel offset inside first word). */
   u_short dxo = dx & 15;
   u_short sxo = sx & 15;
+  /* Forward when destination starts at same/later bit position than source. */
   bool forward = dxo >= sxo;
   u_short xo = forward ? dxo : sxo;
   u_short width = xo + sw;
@@ -57,6 +76,7 @@ void BlitterCopyAreaSetup(const BitmapT *dst, u_short dx, u_short dy,
     state->src_start += (short)sy * (short)src->bytesPerRow;
     state->dst_start += (short)dy * (short)dst->bytesPerRow;
   } else {
+    /* Reverse mode starts from last word of last row to avoid overwrite hazards. */
     state->src_start += (short)(sy + sh - 1) * (short)src->bytesPerRow
                       + bytesPerRow - 2;
     state->dst_start += (short)(dy + sh - 1) * (short)dst->bytesPerRow
@@ -92,6 +112,7 @@ void BlitterCopyAreaSetup(const BitmapT *dst, u_short dx, u_short dy,
 }
 
 void BlitterCopyAreaStart(short dstbpl, short srcbpl) {
+  /* Plane pointers plus cached offsets from Setup. */
   void *srcbpt = state->src->planes[srcbpl] + state->src_start;
   void *dstbpt = state->dst->planes[dstbpl] + state->dst_start;
   u_short bltsize = state->size;

@@ -1,3 +1,12 @@
+/*
+ * CIA timer allocation: one-shot timers on CIA-A/B with IRQ callbacks.
+ *
+ * Purpose: CIA timers are general-purpose countdowns (microseconds to tens of
+ * ms) used for timeouts, music, or delays. This module registers IntServer
+ * handlers per timer and exposes a TaskNotify-friendly API.
+ *
+ * HRM (CIA, timer modes): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <debug.h>
 #include <system/cpu.h>
 #include <system/cia.h>
@@ -27,6 +36,7 @@ static void CIATimerHandler(CIATimerT *timer) {
     timer->timeout(timer);
 }
 
+/* NotifyTimeout — default timeout callback for blocking waits (TaskWait path). */
 static void NotifyTimeout(CIATimerT *timer) {
   TaskNotifyISR(timer->event);
 }
@@ -50,6 +60,7 @@ static CIATimerT Timers[4] = {TIMER(CIAA, A), TIMER(CIAA, B), TIMER(CIAB, A),
                               TIMER(CIAB, B)};
 static MUTEX(TimerMtx);
 
+/* AcquireTimer — reserve one CIA timer and attach its interrupt server. */
 CIATimerT *AcquireTimer(u_int num) {
   CIATimerT *timer = NULL;
   u_int i;
@@ -89,6 +100,7 @@ void ReleaseTimer(CIATimerT *timer) {
   MutexUnlock(&TimerMtx);
 }
 
+/* LoadTimer — program CIA timer registers and start countdown. */
 static void LoadTimer(CIAPtrT cia, u_char icr, u_short delay, u_short flags) {
   /* Load counter and start timer in one-shot mode. */
   if (icr == CIAICRF_TB) {
@@ -116,6 +128,9 @@ void SetupTimer(CIATimerT *timer, CIATimeoutT timeout,
   WriteICR(cia, CIAICRF_SETCLR | icr);
 }
 
+/* WaitTimerGeneric — common implementation for sleep/spin waits on one-shot timer.
+ * spin=true: busy wait polling ICR.
+ * spin=false: enable IRQ callback and block task until notified. */
 void WaitTimerGeneric(CIATimerT *timer, u_short delay, bool spin) {
   CIAPtrT cia = timer->cia;
   u_char icr = timer->icr;

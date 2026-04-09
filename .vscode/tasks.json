@@ -65,6 +65,13 @@
             }
         },
         {
+            "label": "BUILD-DEBUG",
+            "detail": "Build effect with DEBUGBUILD=1 (locals visibles en GDB)",
+            "type": "shell",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make DEBUGBUILD=1 clean -C \"${workspaceFolder}/effects/${config:effect}\" && make DEBUGBUILD=1 -C \"${workspaceFolder}/effects/${config:effect}\"'",
+            "group": "build"
+        },
+        {
             "label": "BUILD ALL",
             "detail": "Build all effects ___________________________ (Shift+Cmd+A, Shift+Cmd+B)",
             "type": "shell",
@@ -90,6 +97,34 @@
             "detail": "Run effect and start gdbserver on localhost:8888",
             "type": "shell",
             "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make debug DEBUGGER=gdbserver -C \"${workspaceFolder}/effects/${config:effect}\"'",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".",
+                    "endsPattern": "Listening for gdb connection at localhost:8888"
+                }
+            },
+            "group": "none"
+        },
+        {
+            "label": "gdbserver-debug",
+            "detail": "Clean+build DEBUGBUILD=1, luego gdbserver (preLaunch para Amiga GDB debug)",
+            "type": "shell",
+            "command": "bash -lc 'source \"${workspaceFolder}/activate\" && make DEBUGBUILD=1 clean -C \"${workspaceFolder}/effects/${config:effect}\" && make DEBUGBUILD=1 debug DEBUGGER=gdbserver -C \"${workspaceFolder}/effects/${config:effect}\"'",
             "isBackground": true,
             "problemMatcher": {
                 "owner": "cpp",

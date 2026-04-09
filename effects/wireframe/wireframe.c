@@ -1,3 +1,33 @@
+/*
+ * Wireframe — 3D mesh edges with Blitter line mode + planar interleaved buffers.
+ *
+ * Pipeline:
+ * - Load `pilka` as an `Object3D` (vertices, faces, edges, precomputed face normals).
+ * - Each frame: world transform, back-face test, mark visible edges, perspective
+ *   project vertices to screen space, then draw each visible edge with the **Blitter
+ *   in line mode** (BC0F_LINE_OR, Bresenham setup in BLTxCON/BLTSIZE — same family as
+ *   lib `BlitterLine`, but inlined here with `_WaitBlitter` + custom register ptr).
+ * - **BLITHOG** gives the blitter bus priority so line drawing keeps up with rotation.
+ *
+ * Visibility:
+ * - `UpdateFaceVisibilityFast`: dot(face normal, vector from camera to first vertex).
+ *   Sign tells front/back; result is stored in the **high byte of the normal pointer
+ *   slot** (`*(char *)fn`) — a compact flag channel in the mesh data.
+ * - `UpdateEdgeVisibility`: for front faces, mark vertex and edge nodes so
+ *   `TransformVertices` only projects what matters.
+ * - Optional `SetFaceVisibility` (right mouse): clears all face flags so **no** edges
+ *   draw — quick way to blank the object for debugging.
+ *
+ * TransformVertices uses a factored matrix multiply (MULVERTEX macros) related to
+ * `(m00+y)*(m01+x)+…` — see inline algebra. NOTE: the code adjusts `M->z` in place
+ * (comment in source); do not reuse this matrix elsewhere without resetting camera.
+ *
+ * Display: four bitplane pointers are **rotated** in the copper each frame (`active`
+ * cycles 0..DEPTH) so motion blur / temporal accumulation spreads edges across planes
+ * (classic “interleaved wire” look).
+ *
+ * HRM (Blitter line mode, minterms): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <strings.h>
 #include "effect.h"
 #include "blitter.h"
@@ -11,13 +41,16 @@
 
 static Object3D *cube;
 static CopListT *cp;
+/* DEPTH+1 planes allocated; copper lists four for the wireframe stack. */
 static BitmapT *screen;
+/* Which plane receives new lines this frame (0..DEPTH, then wraps). */
 static u_short active = 0;
 static CopInsPairT *bplptr;
 
 #include "data/wireframe-pal.c"
 #include "data/pilka.c"
 
+/* 256² @ 4 bitplanes + extra plane row; copper list only wires first four planes. */
 static void Init(void) {
   cube = NewObject3D(&pilka);
   cube->translate.z = fx4i(-250);
@@ -40,6 +73,7 @@ static void Kill(void) {
   DeleteObject3D(cube);
 }
 
+/* Clear all face flag bytes — used with RMB to suppress drawing. */
 static void SetFaceVisibility(Object3D *object) {
   void *_objdat = object->objdat;
   short *group = object->faceGroups;
@@ -51,6 +85,10 @@ static void SetFaceVisibility(Object3D *object) {
   } while (*group);
 }
 
+/*
+ * Back-face culling via dot(normal, camera-to-vertex). Stores 0 / -1 in the byte
+ * following the three normal components (see FACE layout in 3d.h / mesh tools).
+ */
 static void UpdateFaceVisibilityFast(Object3D *object) {
   short cx = object->camera.x;
   short cy = object->camera.y;
@@ -86,6 +124,7 @@ static void UpdateFaceVisibilityFast(Object3D *object) {
   } while (*group);
 }
 
+/* Walk front faces; mark vertices/edges so TransformVertices projects drawn edges only. */
 static void UpdateEdgeVisibility(Object3D *object) {
   register short s asm("d2") = 1;
 
@@ -132,6 +171,7 @@ static void UpdateEdgeVisibility(Object3D *object) {
   D = normfx(t0 * t1 + t2 - xy) + t3;   \
 }
 
+/* Perspective divide writes screen x/y + inv-z into vertex slots for DrawObject. */
 static void TransformVertices(Object3D *object) {
   Matrix3D *M = &object->objectToWorld;
   void *_objdat = object->objdat;
@@ -183,6 +223,10 @@ static void TransformVertices(Object3D *object) {
   } while (*group);
 }
 
+/*
+ * Draw visible edges into one bitplane `bplpt` using Blitter line mode.
+ * `custom_` pinned to a6 for fast `_WaitBlitter` macros between line kicks.
+ */
 static void DrawObject(Object3D *object, void *bplpt,
                        CustomPtrT custom_ asm("a6"))
 {
@@ -311,6 +355,10 @@ static void Render(void) {
   ProfilerStop(Draw);
 
   {
+    /*
+     * Rotate which physical plane buffer the copper points at per bitplane slot —
+     * spreads new lines across planes each frame (persistence / multilayer wire).
+     */
     void **planes = screen->planes;
     short n = DEPTH;
     short i = active;

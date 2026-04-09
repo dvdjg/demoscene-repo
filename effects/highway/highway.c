@@ -1,3 +1,21 @@
+/*
+ * HighWay — split-screen copper: city bitmaps + lane bands + cars as sprites.
+ *
+ * The copper list is one tall program: WAIT between bands reloads palette and
+ * `CopSetupBitplanes` for `city_top`, each `lanes[]` half-band, and `city_bottom`.
+ * `dmacon` clears DMAF_RASTER in the gap between lane strips so Denise does not
+ * fetch garbage bitplanes in the “sky” region — but sprites need something to
+ * compare against, so the loop writes `bpldat[0]=0` each line to force a known
+ * background (sprites visible without a full playfield behind them).
+ *
+ * Cars are small bobs stamped with `BitmapAddSaturated` into the wide `lanes`
+ * bitmaps; `bplptr` copper handles are patched each frame to the scrolling lane
+ * windows (offset +4 bytes aligns word fetches with the blit placement).
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <copper.h>
 #include <blitter.h>
@@ -67,7 +85,7 @@ static CopListT *MakeCopperList(void) {
     CopMove16(cp, dmacon, DMAF_RASTER);
   }
 
-  // use an undocumented trick to make sprites visible while bitplanes are off
+  /* Raster DMA off here: feed bpldat so sprites still composite against a fixed plane. */
   {
     short y0 = LANEL_Y + LANE_H + 1;
     short y1 = LANER_Y - 2;
@@ -200,6 +218,10 @@ static void Render(void) {
   {
     short i;
 
+    /*
+     * Copper still points at the *previous* field’s lane pointers until we patch;
+     * +4 aligns with the horizontal margin where the road graphic was copied (HSIZE).
+     */
     for (i = 0; i < DEPTH; i++) {
       void *bplpt = lanes[active]->planes[i] + 4;
       u_short stride = lanes[active]->bytesPerRow;

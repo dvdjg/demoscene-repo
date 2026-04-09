@@ -1,3 +1,10 @@
+/*
+ * CIA ICR shadow helpers (write/read interrupt control register).
+ *
+ * Purpose: Commodore's CIA ICR uses set/clear bits; we cache enabled/pending
+ * masks so higher-level code can sample without losing the AmigaOS semantics.
+ * This mirrors the need to clear interrupt latches when servicing.
+ */
 #include <system/cia.h>
 
 static __code u_char _ICREnabled[2]; /* enabled interrupts mask */
@@ -22,6 +29,9 @@ u_char WriteICR(CIAPtrT cia, u_char mask) {
   return *enabled;
 }
 
+/* SampleICR — read+accumulate pending CIA interrupt bits and return requested mask.
+ * CIA ICR is edge/latch-like; reading clears hardware bits, so we merge with cached
+ * pending state first, then clear only caller-consumed bits. */
 u_char SampleICR(CIAPtrT cia, u_char mask) {
   /* Read cached pending interrupts bitmask. */
   u_char *pending = ICRPending(cia);

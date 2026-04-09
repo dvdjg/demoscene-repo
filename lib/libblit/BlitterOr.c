@@ -1,3 +1,10 @@
+/*
+ * Blitter-oriented code (libblit): DMA-friendly operations.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <blitter.h>
 
 typedef struct {
@@ -10,6 +17,9 @@ typedef struct {
 static StateT state[1];
 
 /* Supports any (x, y) and any source bitmap width. */
+/*
+ * BlitterOrSetup — same geometry as BlitterCopySetup; bltcon0 uses A_OR_B minterm.
+ */
 void BlitterOrSetup(const BitmapT *dst, u_short x, u_short y,
                     const BitmapT *src)
 {

@@ -1,3 +1,11 @@
+/*
+ * games.c — blitter phase tables for Game of Life (minterm steps per generation).
+ *
+ * Declares `BlitterPhaseFunc` / `BlitterPhaseT` used by `game-of-life.c` to sequence
+ * multiple blitter passes (neighbor counts, birth/survival rules) without a GPU.
+ *
+ * HRM (Blitter minterms): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include "bitmap.h"
 #include "blitter.h"
 

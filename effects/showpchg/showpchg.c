@@ -1,3 +1,12 @@
+/*
+ * ShowPCHG — display an IFF-style **PCHG** stream on the Copper (palette animation).
+ *
+ * `face_pchg` encodes time-varying colour register writes; the list interleaves WAITs
+ * with MOVEs to `color[]` so the portrait’s inks change per region/line. Six bitplanes
+ * (`DEPTH 6`) for the HAM/ECSLike face asset — see `data/face.c`.
+ *
+ * HRM (Copper, COLOR): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include "effect.h"
 #include "copper.h"
 #include "gfx.h"

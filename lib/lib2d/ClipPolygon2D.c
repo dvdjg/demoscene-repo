@@ -1,4 +1,11 @@
 /*
+ * 2D geometry helpers (lib2d): clipping, transforms.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
+/*
  * ClipPolygon2D — Recorte de polígono 2D contra ClipWin (Sutherland-Hodgman).
  * clipFlags indica qué aristas usar (PF_LEFT, PF_TOP, PF_RIGHT, PF_BOTTOM). Recorta
  * en ese orden; in/out pueden alternar entre dos buffers. Devuelve el número de vértices del polígono resultante.

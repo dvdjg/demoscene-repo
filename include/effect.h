@@ -5,6 +5,12 @@
  * UnLoad, Init (reservar memoria, copper, DMA), Kill, Render (un frame), VBlank (opcional).
  * El bucle principal llama EffectLoad → EffectInit → EffectRun (Render cada frame) → EffectKill → EffectUnLoad.
  */
+/*
+ * English tutorial supplement:
+ * An Effect is a self-contained scene: load assets, grab CHIP RAM, configure the
+ * copper/blitter/audio, then render each frame until exit. Splitting demos this way
+ * keeps memory and hardware setup modular. See system/effect.c for lifecycle glue.
+ */
 #ifndef __EFFECT_H__
 #define __EFFECT_H__
 
@@ -15,28 +21,31 @@
 #include <debug.h>
 
 /*
- * Number of frames (50Hz) from time point when Render() was called first.
+ * frameCount — global frame counter (typically 50 Hz PAL), advanced by the
+ * effect loop / CIA frame counter. Used for animation phase and profiling.
  */
 extern short frameCount;
 
 /*
- * Get current frame count from VBlank() context.
+ * ReadFrameCount — same value as frameCount but safe to call from VBlank ISR
+ * context where the global might be updated concurrently (see system/effect.c).
  */
 short ReadFrameCount(void);
 
 /*
- * The time when Render() was called previously.
- * Used to calculate how much did it take to render last frame.
+ * lastFrameCount — previous frame index seen by EffectRun; difference from
+ * frameCount measures frame time. Used by profiler and frame-skipping logic.
  */
 extern short lastFrameCount;
 
 /*
- * When set to true effect render loop breaks.
- * Normally set by LeftMouseButton routine, but can be overwritten.
+ * exitLoop — when true, EffectRun stops calling Render (e.g. left mouse).
+ * Writable by input or effects for scripted exits.
  */
 extern bool exitLoop;
 
 #ifdef INTRO
+/* Intro build: timeline from intro start / time until end (sync). */
 extern short frameFromStart;
 extern short frameTillEnd;
 #endif
@@ -44,11 +53,16 @@ extern short frameTillEnd;
 #ifndef DEMO
 void TimeWarp(u_short frame);
 #else
+/* DEMO build: no time warp (macro expands to nothing). */
 #define TimeWarp(x)
 #endif
 
 typedef void (*EffectFuncT)(void);
 
+/*
+ * EFFECT_MAGIC — ASCII 'GTN!' in a u_int; loader/debugger checks that an
+ * EffectT really is an effect (not random memory).
+ */
 #define EFFECT_MAGIC 0x47544e21 /* GTN! */
 
 typedef struct Effect {
@@ -100,6 +114,12 @@ void EffectKill(EffectT *effect);
 void EffectUnLoad(EffectT *effect);
 void EffectRun(EffectT *effect);
 
+/*
+ * EFFECT(NAME, L, U, I, K, R, V) — defines a static EffectT named NAME##Effect.
+ * Parameters: L=Load, U=UnLoad, I=Init, K=Kill, R=Render, V=VBlank (NULL ok).
+ * Expands to: `__code EffectT LoaderEffect = { .magic = ..., .name = "Loader", ... };`
+ * __code places the struct in the code section (read-only after link) if supported.
+ */
 #define EFFECT(NAME, L, U, I, K, R, V)                                         \
   __code EffectT NAME##Effect = {                                              \
     .magic = EFFECT_MAGIC,                                                     \
@@ -121,6 +141,10 @@ typedef struct Profile {
 } ProfileT;
 
 #ifdef PROFILER
+/*
+ * PROFILE(NAME) — static ProfileT instance for block NAME; paired with
+ * ProfilerStart/Stop around hot code. Uses raster line counter (see profiler.c).
+ */
 #define PROFILE(NAME)                                                          \
   static ProfileT *_##NAME##_profile = &(ProfileT){                            \
     .name = #NAME,                                                             \
@@ -145,6 +169,7 @@ typedef struct Profile {
  * Let's background task do its job. */
 void TaskWaitVBlank(void);
 #else
+/* Single-task: busy-wait vertical position (see system/amigaos WaitVBlank or custom). */
 #define TaskWaitVBlank WaitVBlank
 #endif
 

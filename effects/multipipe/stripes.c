@@ -1,3 +1,10 @@
+/*
+ * multipipe — Layered pipe tunnel; shares ideas with stripes.c in same folder.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 static short stripes[] = {
  296,
  285,

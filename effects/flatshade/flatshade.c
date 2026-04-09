@@ -1,3 +1,20 @@
+/*
+ * FlatShade — flat-shaded 3D mesh (transform + sort) with blitter line/XOR fill.
+ *
+ * Each face colour is a 4-bit nibble (FACE flags). After XOR-fill in a scratch plane,
+ * that mask is merged into each of the four playplanes with OR or “clear” minterms
+ * so the four bits select one of 16 pens (flatshade + stripe sprite palettes).
+ *
+ * Eight DMA sprites (four stripe textures × 2 horizontal halves) are repositioned
+ * every scanline in the copper list: left cluster near DIW start, right cluster
+ * mirrored mid-screen — vertical “curtain” stripes framing the 3D. VBlank scrolls
+ * which row of the tiled sprite definitions is active (Load() duplicates sprdata
+ * to 384 lines so modulo arithmetic never runs off the end).
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include "beampos.h"
 #include "effect.h"
 #include "blitter.h"
@@ -14,6 +31,7 @@ static __code Object3D *cube;
 static __code CopListT *cp;
 static __code CopInsPairT *bplptr;
 static __code BitmapT *screen[2];
+/* Monoplane stencil (same trick as stencil3d: planes[DEPTH] aliases this buffer). */
 static __code BitmapT *buffer;
 static __code int active = 0;
 
@@ -36,20 +54,21 @@ static __code SpriteT *stripe[8] = {
   stripe_4_1,
 };
 
+/* Words adjacent to visible sprdata row — saved while we patch height/terminator. */
 typedef struct StripeBackup {
   u_int header;
   u_int footer;
   short offset;
 } StripeBackupT;
 
+/* Vertical scroll indices into tiled stripe definitions (pairs share one texture). */
 static __code short offset[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 static __code StripeBackupT stripeBackup[8];
 
 static void Load(void) {
   short i, j;
 
-  /* stripe 1-3 have 96 lines, and stripe 4 48 lines
-   * we need to copy them to create 384 lines long sprites */
+  /* Stripe assets are 96 rows (48 for stripe 4); tile to 384 rows for scroll wrap. */
 
   memcpy(&stripe[6]->data[48], &stripe[6]->data[0], 48 * sizeof(SprDataT));
   memcpy(&stripe[7]->data[48], &stripe[7]->data[0], 48 * sizeof(SprDataT));
@@ -61,6 +80,7 @@ static void Load(void) {
   }
 }
 
+/* Snapshot sprdata[-1] and sprdata[HEIGHT] before UpdateStripes overwrites them. */
 static void SaveStripes(short offset[8]) {
   SpriteT **sprite = stripe;
   StripeBackupT *backup = stripeBackup;
@@ -79,6 +99,7 @@ static void SaveStripes(short offset[8]) {
   }
 }
 
+/* Put back sprdata guard words after a frame (see SaveStripes). */
 static void RestoreStripes(void) {
   StripeBackupT *backup = stripeBackup;
   SpriteT **sprite = stripe;
@@ -96,6 +117,7 @@ static void RestoreStripes(void) {
   }
 }
 
+/* Point sprpt[] at constructed SpriteT views; HEIGHT rows, footer word = 0 (end). */
 static void UpdateStripes(short offset[8]) {
   short i;
 
@@ -110,6 +132,11 @@ static void UpdateStripes(short offset[8]) {
   }
 }
 
+/*
+ * Per-raster-line: WAIT → move left stripe pair positions → gradient colours →
+ * WAIT mid-screen → move right stripe positions (mirror layout). HP positions
+ * align with playfield X(32) and column spacing.
+ */
 static CopListT *MakeCopperList(void) {
   CopListT *cp;
   u_short *pixels = gradient_pixels;
@@ -163,7 +190,7 @@ static void Init(void) {
   BitmapClear(screen[1]);
   BitmapClear(buffer);
 
-  /* keep the buffer as the last bitplane of both screens */
+  /* Stencil plane: shared CHIP buffer, not allocated as a fourth display plane. */
   screen[0]->planes[DEPTH] = buffer->planes[0];
   screen[1]->planes[DEPTH] = buffer->planes[0];
 
@@ -174,7 +201,7 @@ static void Init(void) {
   LoadColors(stripe_3_colors, 24);
   LoadColors(stripe_4_colors, 28);
 
-  // Sprites are below foreground
+  /* Sprites behind bitplanes (priority from bplcon2). */
   custom->bplcon2 = 0;
 
   cp = MakeCopperList();
@@ -213,6 +240,7 @@ static void Kill(void) {
   D = normfx(t0 * t1 + t2 - xy) + t3;           \
 }
 
+/* Only nodes with flags set; writes projected x,y and zp (see stencil3d / lib3d). */
 static void TransformVertices(Object3D *object) {
   Matrix3D *M = &object->objectToWorld;
   void *_objdat = object->objdat;
@@ -265,6 +293,10 @@ static void TransformVertices(Object3D *object) {
   } while (*group);
 }
 
+/*
+ * Stencil line draw + XOR fill on scrbpl[0]; then for each bitplane MSB→LSB,
+ * OR mask in or clear (NABC|NABNC) so face colour bits paint 4bpp chunky-style.
+ */
 static void DrawObject(Object3D *object, void **planes,
                        CustomPtrT custom_ asm("a6"))
 {
@@ -307,7 +339,7 @@ static void DrawObject(Object3D *object, void **planes,
         }
 
         if (y0 == y1)
-          continue;
+          continue; /* skip horizontal edges for XOR parity */
 
         if (y0 > y1) {
           swapr(x0, x1);
@@ -420,7 +452,7 @@ static void DrawObject(Object3D *object, void **planes,
         }
       }
 
-      /* Fill face. */
+      /* XOR fill polygon interior in stencil plane. */
       {
         void *src = scrbpl[0] + bltend;
 
@@ -436,7 +468,7 @@ static void DrawObject(Object3D *object, void **planes,
         custom_->bltsize = bltsize;
       }
 
-      /* Copy filled face to screen. */
+      /* Spread face colour bits across DEPTH bitplanes using stencil as mask. */
       {
         void **dstbpl = scrbpl;
         void *src = scrbpl[0] + bltstart;
@@ -466,7 +498,7 @@ static void DrawObject(Object3D *object, void **planes,
         } while (mask);
       }
 
-      /* Clear working area. */
+      /* Clear stencil for next face. */
       {
         void *data = scrbpl[0] + bltstart;
 
@@ -481,6 +513,7 @@ static void DrawObject(Object3D *object, void **planes,
   }
 }
 
+/* Single blit clears all bitplanes (stacked as one tall virtual area). */
 static void BitmapClearFast(BitmapT *dst) {
   u_short height = (short)dst->height * (short)dst->depth;
   u_short bltsize = (height << 6) | (dst->bytesPerRow >> 1);
@@ -526,6 +559,7 @@ static void Render(void) {
   active ^= 1;
 }
 
+/* Independent scroll phase for each stripe pair (48 wrap for shorter stripe 4). */
 static void VBlank(void) {
   static short frameCount = 0;
   frameCount += 3;

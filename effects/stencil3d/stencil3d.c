@@ -1,3 +1,21 @@
+/*
+ * Stencil3D — 3D mesh + stencil buffer + dual-playfield copper + blitter fill/lines.
+ *
+ * Display: MODE_DUALPF merges two playfields — PF1 = 3D object (screen[]), PF2 =
+ * background bitmap. Copper points bplpt[0..4] at object planes + background planes
+ * and per-scanline color[] from background_cols (gradient bars). Extra single-plane
+ * buffer is aliased as screen[*]->planes[DEPTH]: used only as a scratch stencil
+ * (not DMA-displayed), shared by both buffers to save CHIP RAM.
+ *
+ * DrawObject (back-to-front via SortFaces): for each visible face, blitter line mode
+ * draws polygon edges into the stencil plane, XOR fill closes regions, then geometry
+ * is merged into bitplane 2 with A_OR_B / A_AND_NOT_B from the stencil, and pattern
+ * tiles (pattern_1 / pattern_2, three shades) are masked in with a minterm that
+ * uses mask + pattern + destination.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
 #include "effect.h"
 #include "blitter.h"
 #include "copper.h"
@@ -10,8 +28,10 @@
 
 static __code Object3D *object;
 static __code CopListT *cp;
+/* Patched each frame: PF1 BPL0 + PF2 BPL0/1 + PF1 BPL2 (see MakeCopperList). */
 static __code CopInsPairT *bplptr;
 static __code BitmapT *screen[2];
+/* Single-plane stencil/mask workspace; also screen[i]->planes[3]. */
 static __code BitmapT *buffer;
 static __code int active = 0;
 
@@ -27,11 +47,15 @@ static __code int active = 0;
 #include "data/kurak-head.c"
 #include "data/cock-anim.c"
 
+/*
+ * Dual-PF copper: object on low bplpt slots, background on high; per-line colours
+ * from background_cols_pixels (HAM-like bars without HAM mode).
+ */
 static CopListT *MakeCopperList(void) {
   CopListT *cp =
     NewCopList(100 + background_height * (background_cols_width + 3));
 
-  /* bitplane modulos for both playfields */
+  /* Bitplane modulo for both playfields (flat fetch). */
   CopMove16(cp, bpl1mod, 0);
   CopMove16(cp, bpl2mod, 0);
 
@@ -61,7 +85,7 @@ static CopListT *MakeCopperList(void) {
 
 static void Load(void) {
   object = NewObject3D(&kurak);
-  object->translate.z = fx4i(-256);
+  object->translate.z = fx4i(-256); /* base distance; Render adds cock path offset */
 }
 
 static void UnLoad(void) {
@@ -73,7 +97,7 @@ static void Init(void) {
   screen[1] = NewBitmap(WIDTH, HEIGHT, DEPTH, 0);
   buffer = NewBitmap(WIDTH, HEIGHT, 1, 0);
 
-  /* keep the buffer as the last bitplane of both screens */
+  /* Stencil plane: same CHIP buffer wired into both screen[] (not a 4th AllocPlanes). */
   screen[0]->planes[DEPTH] = buffer->planes[0];
   screen[1]->planes[DEPTH] = buffer->planes[0];
 
@@ -85,6 +109,7 @@ static void Init(void) {
 
   SetupDisplayWindow(MODE_LORES, X(32), Y(0), WIDTH, HEIGHT);
   SetupBitplaneFetch(MODE_LORES, X(32), WIDTH);
+  /* 3 object planes + 2 background planes (see bplpt wiring in MakeCopperList). */
   SetupMode(MODE_DUALPF, DEPTH + background_depth);
   LoadColors(pattern_1_colors, 0);
   LoadColors(pattern_2_colors, 4);
@@ -121,6 +146,7 @@ static void Kill(void) {
     D = normfx(t0 * t1 + t2 - xy) + t3;                                        \
   }
 
+/* Transforms only nodes with flags set (see mesh); writes 12.4 screen + zp. */
 static void TransformVertices(Object3D *object) {
   Matrix3D *M = &object->objectToWorld;
   void *_objdat = object->objdat;
@@ -173,6 +199,7 @@ static void TransformVertices(Object3D *object) {
   } while (*group);
 }
 
+/* [material variant][shade 0..2] → pattern bitplane arrays for texturing faces. */
 static __code void **patterns[2][3] = {
   {
     (void **)pattern_2_3.planes,
@@ -186,11 +213,17 @@ static __code void **patterns[2][3] = {
   },
 };
 
+/* Buckets face lighting flags (0..15) into pattern row index 0, 1, or 2. */
 static __code short pattern_shade[16] = {
   0, 0, 0, 0, 0, 0, 0, 0,
   0, 1, 1, 1, 2, 2, 2, 2
 };
 
+/*
+ * Rasterize sorted faces: stencil plane = polygon from line draw + XOR fill;
+ * bitplane 2 gets object pixels masked by stencil; pattern blits add detail.
+ * planes[DEPTH] is the shared single-bitplane buffer.
+ */
 static void DrawObject(Object3D *object, void **planes,
                        CustomPtrT custom_ asm("a6")) {
   register SortItemT *item asm("a3") = object->visibleFace;
@@ -230,6 +263,7 @@ static void DrawObject(Object3D *object, void **planes,
           y1 = *vertex++;
         }
 
+        /* Horizontal edges do not contribute to XOR fill closure. */
         if (y0 == y1)
           continue;
 
@@ -341,7 +375,7 @@ static void DrawObject(Object3D *object, void **planes,
         }
       }
 
-      /* Fill face. */
+      /* XOR fill enclosed region in stencil plane (reverse blit from bottom-right). */
       {
         void *dst = planes[DEPTH] + bltend;
 
@@ -358,7 +392,7 @@ static void DrawObject(Object3D *object, void **planes,
         custom_->bltsize = bltsize;
       }
 
-      /* Copy filled face to screen. */
+      /* Merge stencil into object colour plane: add or subtract from plane 2. */
       {
         void *dst = planes[2] + bltstart;
         void *mask = planes[DEPTH] + bltstart;
@@ -396,6 +430,7 @@ static void DrawObject(Object3D *object, void **planes,
 
         srcbpl = patterns[pat][shade];
 
+        /* A=mask B=pattern C=dst D=dst — classic masked pattern OR into PF1 planes. */
         for (i = 0; i < pattern_1_1_depth; i++) {
           void *src = *srcbpl++;
           void *dst = *dstbpl++ + bltstart;
@@ -415,7 +450,7 @@ static void DrawObject(Object3D *object, void **planes,
         }
       }
 
-      /* Clear working area. */
+      /* Zero stencil rectangle for next face. */
       {
         void *data = planes[DEPTH] + bltstart;
 
@@ -430,6 +465,7 @@ static void DrawObject(Object3D *object, void **planes,
   }
 }
 
+/* One blit clears all planes starting at plane[0] (height × depth as vertical size). */
 static void BitmapClearFast(BitmapT *dst) {
   u_short height = (short)dst->height * (short)dst->depth;
   u_short bltsize = (height << 6) | (dst->bytesPerRow >> 1);
@@ -453,6 +489,7 @@ PROFILE(Draw);
 static void Render(void) {
   BitmapClearFast(screen[active]);
 
+  /* Path keyframe drives transform on top of kurak mesh base. */
   {
     short *frame = cock_anim[frameCount % cock_anim_frames];
     object->translate.x = *frame++;
@@ -481,6 +518,7 @@ static void Render(void) {
   DrawObject(object, screen[active]->planes, custom);
   ProfilerStop(Draw); // Average: 671
 
+  /* Point copper at the buffer we just drew (PF1); PF2 stays background. */
   CopInsSet32(&bplptr[0], screen[active]->planes[0]);
   CopInsSet32(&bplptr[2], screen[active]->planes[1]);
   CopInsSet32(&bplptr[4], screen[active]->planes[2]);

@@ -1,3 +1,29 @@
+/*
+ * Stripes — 3D-ish “floating bars” drawn as per-raster colour stripes (Copper).
+ *
+ * Demoscene technique:
+ * - There are no polygon edges on screen — only horizontal spans. Each “stripe” is
+ *   a stack of scanlines that share a vertical position `y` (after projection) and
+ *   a thickness derived from `z` (pseudo-depth). `SetLineColor` writes the same
+ *   COLOR0 into a run of `CopSetColor` instructions, one per display line, so the
+ *   Copper changes the border/playfield colour exactly at each horizontal retrace
+ *   boundary (classic “raster bar” / “copper rainbow” family of effects).
+ * - `RotateStripes` projects random 3D seed positions with a 2D rotation around an
+ *   off-screen pivot (`centerY`, `centerZ`), then perspective divide (`div16`) so
+ *   nearer stripes appear taller — **all on the CPU**; the Amiga only paints flat
+ *   colour per line.
+ * - `SortStripes` is insertion sort on `z` (painter’s algorithm: back to front).
+ * - Two full copper lists double-buffer **patches** only (`CopInsSet16`), not the
+ *   whole list — cheap animation.
+ *
+ * Colour model:
+ * - `colorShades` packs four base hues (`colorSet`) × 32 ramp entries: fade up from
+ *   black, then fade to white. `SetLineColor` indexes with `color | l` where `l`
+ *   is a lighting band from `z`.
+ *
+ * HRM (Copper WAIT, COLOR registers): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
 #include "effect.h"
 #include "copper.h"
 #include "fx.h"
@@ -6,23 +32,33 @@
 
 #define WIDTH   320
 #define HEIGHT  256
+/* Range for random initial (y,z) in GenerateStripes — keeps stripes near origin. */
 #define SIZE    128
 #define STRIPES 20
+/* Border / clear colour (also end-of-list restore). */
 #define BGCOL   0x204
 
+/*
+ * StripeT — one logical bar before/after projection.
+ * - y, z: pre-rotation coordinates in fixed-point-ish space (see GenerateStripes).
+ * - color: index 0..3 selecting which quarter of `colorShades` to use (×32 entries).
+ */
 typedef struct {
   short y, z;
   short color;
 } StripeT;
 
 static CopListT *cp[2];
+/* lineColor[buffer][line] — CopIns handle for that line’s COLOR0 MOVE (patched each frame). */
 static CopInsT *lineColor[2][HEIGHT];
 static StripeT stripe[STRIPES];
 static short active = 0;
 
 static u_short colorSet[4] = { 0xC0F, 0xF0C, 0x80F, 0xF08 };
+/* 4 hues × 32 shades: dark→sat→white ramps for lighting. */
 static u_short colorShades[4 * 32];
 
+/* Random initial bar seeds: clustered around center, random palette slot in 0x00/0x20/0x40. */
 static void GenerateStripes(void) {
   short *s = (short *)stripe;
   short n = STRIPES;
@@ -34,6 +70,7 @@ static void GenerateStripes(void) {
   }
 }
 
+/* Build 32-step ramps per hue: first half black→hue, second half hue→white. */
 static void GenerateColorShades(void) {
   short i, j;
   u_short *s = colorSet;
@@ -49,6 +86,11 @@ static void GenerateColorShades(void) {
   }
 }
 
+/*
+ * One copper list: WAIT per line, then MOVE to COLOR0. `line[]` receives pointers
+ * so Render can overwrite only the data words (fast). Trailing WAIT+colour restores
+ * border after the playfield block.
+ */
 static CopListT *MakeCopperList(CopInsT **line) {
   CopListT *cp = NewCopList(HEIGHT * 2 + 100);
   short i;
@@ -80,9 +122,14 @@ static void Kill(void) {
   DeleteCopList(cp[1]);
 }
 
+/* “Camera” pivot for rotation + perspective (see div16 denominator). */
 static short centerY = 0;
 static short centerZ = 192;
 
+/*
+ * Project all stripes: read triples (y,z,color) from `s`, write (screenY, z, color)
+ * into `d`. Uses fixed-point trig (SIN/COS >> 4) and `div16` for perspective.
+ */
 static void RotateStripes(short *d, short *s, short rotate) {
   short n = STRIPES;
   int cy = centerY << 8;
@@ -102,6 +149,7 @@ static void RotateStripes(short *d, short *s, short rotate) {
   }
 }
 
+/* Reset every line to background before drawing this frame’s bars (avoids trails). */
 static void ClearLineColor(void) {
   CopInsT **line = lineColor[active];
   short n = HEIGHT;
@@ -110,6 +158,10 @@ static void ClearLineColor(void) {
     CopInsSet16(*line++, BGCOL);
 }
 
+/*
+ * Paint each stripe as a vertical column of constant COLOR0: top cap (darker shade),
+ * `h` scanlines of core colour, bottom cap. `i` is top scanline; `h` from `z`.
+ */
 static void SetLineColor(short *s) {
   CopInsT **lines = lineColor[active];
   short n = STRIPES;
@@ -146,6 +198,11 @@ static void SetLineColor(short *s) {
   }
 }
 
+/*
+ * Insertion sort by increasing z (draw far stripes first, near on top — though here
+ * all spans are opaque colour lines, order mainly affects overlap appearance).
+ * `register short n asm("d7")` pins the loop counter for the hand-tuned inner loop.
+ */
 static void SortStripes(StripeT *table) {
   StripeT *ptr = table + 1;
   register short n asm("d7") = STRIPES - 2;
@@ -174,6 +231,7 @@ PROFILE(RenderStripes);
 static void Render(void) {
   ProfilerStart(RenderStripes);
   {
+    /* Slow rotation of the 3D field (phase drives SIN/COS in RotateStripes). */
     RenderStripes(SIN(frameCount * 4) * 2);
   }
   ProfilerStop(RenderStripes);

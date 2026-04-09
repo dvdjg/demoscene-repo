@@ -1,8 +1,19 @@
 /*
+ * 2D geometry helpers (lib2d): clipping, transforms.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
+/*
  * ClipLine2D — Recorte de segmento 2D contra la ventana ClipWin (Box2D global).
  * Algoritmo de Liang-Barsky: calcula parámetros t de intersección con las 4 aristas
  * del rectángulo y recorta el segmento. Usa div16 (divs en 68000) para las divisiones.
  * Devuelve true si queda parte visible y actualiza line->x1,y1,x2,y2.
+ */
+/*
+ * English: Liang–Barsky in fixed-point (BITS=8). `edge[]` holds -dx, -dy and distances
+ * to clip window edges; div16 avoids libgcc division. ClipWin is a global Box2D.
  */
 #include <2d.h>
 #include <fx.h>

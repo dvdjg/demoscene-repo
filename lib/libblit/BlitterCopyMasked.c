@@ -1,6 +1,14 @@
+/*
+ * Blitter-oriented code (libblit): DMA-friendly operations.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <blitter.h>
 
 typedef struct {
+  /* Cached pointers and geometry shared between Setup/Start calls. */
   const BitmapT *src;
   const BitmapT *msk;
   const BitmapT *dst;
@@ -10,6 +18,16 @@ typedef struct {
 
 static StateT state[1];
 
+/*
+ * BlitterCopyMaskedSetup — configure minterms/modulo for masked copy (full src rect).
+ *
+ * Channel roles (HRM Blitter chapter): A = source plane, B = mask plane (1 bpp),
+ * C = destination read for merge, D = write. Minterm (ABC|ABNC|ANBC|NANBC) is the
+ * classic "replace dest with src where mask=1" pattern.
+ *
+ * dst: destination bitmap; x,y: top-left in destination where the src bitmap is placed.
+ * src: full rectangular bitmap; msk: single-plane mask (same geometry as src).
+ */
 void BlitterCopyMaskedSetup(const BitmapT *dst, u_short x, u_short y,
                             const BitmapT *src, const BitmapT *msk)
 {
@@ -24,6 +42,9 @@ void BlitterCopyMaskedSetup(const BitmapT *dst, u_short x, u_short y,
 
   if (bltshift)
     bltsize++, dstmod -= 2;
+
+  /* Final BLTSIZE for BlitterCopyMaskedStart (must match registers below). */
+  state->size = bltsize;
 
   WaitBlitter();
 
@@ -48,6 +69,12 @@ void BlitterCopyMaskedSetup(const BitmapT *dst, u_short x, u_short y,
   }
 }
 
+/*
+ * BlitterCopyMaskedStart — bind plane pointers and kick one masked blit.
+ *
+ * dstbpl/srcbpl: which bitplane index to use on dst/src (same index is typical).
+ * Waits for idle blitter before programming pointers (serializes with prior blits).
+ */
 void BlitterCopyMaskedStart(short dstbpl, short srcbpl) {
   void *srcbpt = state->src->planes[srcbpl];
   void *dstbpt = state->dst->planes[dstbpl] + state->start;

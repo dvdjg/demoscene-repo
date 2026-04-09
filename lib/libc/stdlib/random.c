@@ -1,3 +1,10 @@
+/*
+ * Minimal libc/runtime piece for bare-metal (stdlib/random.c).
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <stdlib.h>
 #include <common.h>
 

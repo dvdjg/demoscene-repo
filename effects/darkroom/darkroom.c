@@ -1,3 +1,23 @@
+/*
+ * Darkroom — moving “safelight” beams with per-line BPL pointers into CHIP line buffers.
+ *
+ * The display is still a 320×256 playfield, but most raster lines do not fetch from a
+ * unique row of a full framebuffer. Instead, `buffer[0..7][3]` holds eight precomputed
+ * variants of one scanline (three bitplanes) at different summed intensities.
+ * `CalculateFirstLine` builds the base row (vertical beam masks via XOR ripple add in
+ * CPU); `CalculateBuffer` uses the blitter with half/full-adder minterms to add one of
+ * eight constant patterns (`lines_bltadat`) — same idea as saturated bitmap add: avoid
+ * a CPU loop over every pixel each frame.
+ *
+ * `line_sel[y]` picks which intensity variant row to show on display line y; horizontal
+ * beams update bands of `line_sel` via `HorizontalLines`. `UpdateCopperLines` patches
+ * only the copper MOVEs near moving horizontal lines so unchanged rows keep pointing at
+ * buffer[0]. Vertical beams move by recomputing `CalculateFirstLine` when positions change.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -120,8 +140,10 @@ static void CalculateFirstLine(line buf[3], linedesc vl[NO_OF_V_LINES]) {
 
 static void CalculateBuffer(line buf[8][3]) {
   /*
-   * Add all possible light intensity (from 0 to (2^DEPTH)-1 to base line with
-   * vertical lines)
+   * For each intensity level 1..7, blitter-add a bitmask into the three planes using
+   * carry propagation (same family of minterms as BitmapAddSaturated). Level 0 is the
+   * base line from CalculateFirstLine; levels 1–7 overlay stronger “light” without
+   * storing 320×256×8 full frames.
    */
 
   static const short lines_bltadat[8][3] = {
@@ -364,6 +386,10 @@ static void UpdateCopperLines(line buf[8][3], short *ls,
   }
 }
 
+/*
+ * One WAIT + three BPLxPT MOVEs per scanline: each points into a row of `buffer`, not
+ * into `screen` — the “framebuffer” is virtual; only eight CHIP lines hold templates.
+ */
 static CopListT *MakeCopperList(void) {
   CopListT *cp = NewCopList(4096);
   short i;

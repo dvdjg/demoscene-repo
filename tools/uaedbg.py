@@ -8,7 +8,7 @@ import sys
 import traceback
 
 from debug.uae import UaeDebugger, UaeProcess
-from debug.gdb import GdbConnection, GdbStub
+from debug.gdb import GdbConnection, GdbDisconnect, GdbStub
 
 
 BREAK = 0xCF47  # no-op: 'exg.l d7,d7'
@@ -31,13 +31,20 @@ async def UaeLaunch(loop, args):
     async def GdbClient(reader, writer):
         try:
             await GdbStub(GdbConnection(reader, writer), uaeproc).run()
+        except GdbDisconnect:
+            logging.info('gdb session finished (client disconnected)')
+            uaeproc.terminate()
+        except asyncio.CancelledError:
+            raise
         except Exception:
             traceback.print_exc()
-            input('Press enter to quit...')
-            # TODO: Better handling of gdbserver client disconnection
-            #       Now it simply throws ValueError(data) exception
-            #       in gdb.py:31 [recv_ack]
             uaeproc.terminate()
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except (ConnectionError, OSError, BrokenPipeError):
+                pass
 
     async def GdbListen():
         await uaeproc.prologue()

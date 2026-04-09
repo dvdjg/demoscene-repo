@@ -1,3 +1,22 @@
+/*
+ * UVMapRGB — HAM chunky UV texture + JIT inner loop + IRQ-driven C2P (uvmap variant).
+ *
+ * Compared to uvmap.c: 12-bit RGB textures. PixmapScramble packs RGB444 into
+ * planar HAM-friendly bit patterns via redtab/greentab/bluetab nibble shuffles.
+ * Per-pixel work is a JIT stream of 68000 opcodes from MakeUVMapRenderCode
+ * (move.w from offset table, move.w from texture, rts). UVMapRenderCrop / Restore
+ * patch bra.w skips so only an 80×64 window runs — a viewport into the larger
+ * uvmap without executing dead pixels.
+ *
+ * Display: ChunkyToPlanar runs in Blitter IRQ (multi-pass shuffle); case 12
+ * reorders BPL pointers for HAM base planes. MakeCopperList does line quadrupling
+ * (BPLxMOD) and alternates BPLCON1 for vertical scale / shimmer.
+ *
+ * MODE_HAM; on AGA, two extra bitplanes plus fixed bpldat / plane fill — see Init.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -6,13 +25,16 @@
 #include <system/interrupt.h>
 #include <system/memory.h>
 
+/* Logical render window (cropped from full uvmap); display is 4× taller via copper. */
 #define WIDTH 80
 #define HEIGHT 64
 #define DEPTH 4
 
 static BitmapT *screen[2];
 static u_short active = 0;
+/* Scrambled RGB444→planar-friendly words; second 32K copy enables cheap scroll (see memcpy). */
 static u_short *texture;
+/* CHIP chunky buffers (double-buffered); fed by JIT, consumed by C2P. */
 static u_short *chunky[2];
 static CopListT *cp;
 static CopInsPairT *bplptr;
@@ -24,12 +46,16 @@ static CopInsPairT *bplptr;
 typedef void (*UVMapRenderT)(u_short *chunky asm("a0"),
                              u_short *offsets asm("a1"),
                              u_short *texture asm("a2"));
+/* MEMF_PUBLIC buffer holding generated 68000 (not a normal C function pointer target). */
 static UVMapRenderT UVMapRender;
+/* Per-row byte pairs into texture / offset table — animated in ControlOffsets. */
 static u_short UVMapOffsets[image_height];
 
 #define UVMapRenderBackupSize (HEIGHT * 4)
+/* Words saved while UVMapRenderCrop overwrites inner rows with bra.w. */
 static u_short *UVMapRenderBackup;
 
+/* Emit one texture sample per uvmap texel: load u offset, index texture, write chunky. */
 static void MakeUVMapRenderCode(void) {
   u_short *code = (void *)UVMapRender;
   u_char *data = (void *)uvmap;
@@ -57,6 +83,7 @@ static void MakeUVMapRenderCode(void) {
   *code++ = 0x4e75; /* rts */
 }
 
+/* Replace inner rows with bra.w skips; save overwritten words to `backup` for restore. */
 static void* UVMapRenderCrop(void *code, void *backup, short x, short y) {
   u_short *data = code;
   u_short *save = backup;
@@ -120,6 +147,7 @@ static u_short redtab[16] = {
   0x8000, 0x8008, 0x8080, 0x8088, 0x8800, 0x8808, 0x8880, 0x8888,
 };
 
+/* Pack 12-bit RGB pixmap into 16-bit words where each nibble lane matches HAM plane layout. */
 static void PixmapScramble(const PixmapT *image, u_short *texture) {
   u_char *in = image->pixels;
   u_short *out = texture;
@@ -154,6 +182,10 @@ static void UnLoad(void) {
   MemFree(texture);
 }
 
+/*
+ * C2P IRQ state. phase 256 until Render sets 0 (avoids running switch before first frame).
+ * chunky: temporary work + source for blits; bpl: destination screen planes.
+ */
 static struct {
   short phase;
   void **bpl;
@@ -163,6 +195,11 @@ static struct {
 #define BPLSIZE ((WIDTH * 4) * HEIGHT / 8) /* 2560 bytes */
 #define BLTSIZE ((WIDTH * 4) * HEIGHT / 2) /* 10240 bytes */
 
+/*
+ * Blitter IRQ: one case per interrupt. Even/odd phase pairs often repeat bltsize with
+ * the same minterms (second pass / reverse direction) — see cases 0–1, 2–3, etc.
+ * Case 12 rewires copper BPL pointers for HAM plane order after shuffle completes.
+ */
 static void ChunkyToPlanar(void) {
   void *src = c2p.chunky;
   void *dst = c2p.chunky + BLTSIZE;
@@ -267,6 +304,7 @@ static void ChunkyToPlanar(void) {
       break;
 
     case 12:
+      /* HAM: expose shuffled planes in order expected by playfield (see MODE_HAM setup). */
       CopInsSet32(&bplptr[0], bpl[3]);
       CopInsSet32(&bplptr[1], bpl[2]);
       CopInsSet32(&bplptr[2], bpl[1]);
@@ -282,6 +320,7 @@ static void ChunkyToPlanar(void) {
   ClearIRQ(INTF_BLIT);
 }
 
+/* HAM playfield: tall copper list with per-line modulo to repeat each logical line 4×. */
 static CopListT *MakeCopperList(void) {
   CopListT *cp = NewCopList(1200);
   short i;
@@ -290,7 +329,7 @@ static CopListT *MakeCopperList(void) {
   CopLoadColor(cp, 0, 15, 0);
   for (i = 0; i < HEIGHT * 4; i++) {
     CopWaitSafe(cp, Y(i), HP(0));
-    /* Line quadrupling. */
+    /* Line quadrupling: negative modulo holds fetch until fourth subline advances. */
     CopMove16(cp, bpl1mod, ((i & 3) != 3) ? -40 : 0);
     CopMove16(cp, bpl2mod, ((i & 3) != 3) ? -40 : 0);
     /* Alternating shift by one for bitplane data. */
@@ -319,13 +358,15 @@ static void Init(void) {
   SetupPlayfield(MODE_HAM, IsAGA() ? 6 : 7, X(0), Y(0), WIDTH * 4 + 2, HEIGHT * 4);
 
   if (IsAGA()) {
+    /* Extra planes: static nibble patterns for HAM hold / modify behaviour on AGA. */
     memset(screen[0]->planes[4], 0x77, WIDTH * 4 * HEIGHT / 8);
     memset(screen[1]->planes[4], 0x77, WIDTH * 4 * HEIGHT / 8);
     memset(screen[0]->planes[5], 0xcc, WIDTH * 4 * HEIGHT / 8);
     memset(screen[1]->planes[5], 0xcc, WIDTH * 4 * HEIGHT / 8);
   } else {
-    custom->bpldat[4] = 0x7777; // rgbb: 0111
-    custom->bpldat[5] = 0xcccc; // rgbb: 1100
+    /* OCS/ECS: same rgbb idea via bpldat during missing initial fetch. */
+    custom->bpldat[4] = 0x7777; /* rgbb: 0111 */
+    custom->bpldat[5] = 0xcccc; /* rgbb: 1100 */
   }
 
   cp = MakeCopperList();
@@ -357,6 +398,7 @@ static void Kill(void) {
 
 PROFILE(UVMapRGB);
 
+/* Wobble the UV offset table rows so the texture "breathes" (sine on row/column). */
 static void ControlOffsets(void) {
   u_char *off = (u_char *)UVMapOffsets;
   short i;
@@ -378,6 +420,7 @@ static void Render(void) {
   ProfilerStart(UVMapRGB);
   ControlOffsets();
   {
+    /* Moving 80×64 window over full uvmap; texture pointer scrolls in 64K table. */
     short x = normfx(SIN(frameCount * 8) * WIDTH / 2) + WIDTH / 2;
     short y = normfx(COS(frameCount * 8) * HEIGHT / 2) + HEIGHT / 2;
     UVMapRenderT code = UVMapRenderCrop(UVMapRender, UVMapRenderBackup, x, y);
@@ -386,6 +429,7 @@ static void Render(void) {
   }
   ProfilerStop(UVMapRGB);
 
+  /* Kick C2P chain for this chunky[] buffer; IRQs advance c2p.phase until idle. */
   c2p.phase = 0;
   c2p.chunky = chunky[active];
   c2p.bpl = screen[active]->planes;

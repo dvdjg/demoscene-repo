@@ -1,3 +1,10 @@
+/*
+ * Assembler/linker helpers (ENTRY/END) shared by .S and the build.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef __ASM_H__
 #define __ASM_H__
 

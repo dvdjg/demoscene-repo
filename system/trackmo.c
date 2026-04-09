@@ -1,3 +1,12 @@
+/*
+ * Trackmo disk bootstrap: open floppy and initialize the custom filesystem layer.
+ *
+ * Purpose: when running from a custom disk trackloader (not AmigaDOS), BootDev
+ * selects which drive; we open it via the floppy driver and InitFileSys so
+ * subsequent effect loads can read packed data from disk.
+ *
+ * RKM / physical drivers are abstracted here — see system/drivers/filesys.c.
+ */
 #include <linkerset.h>
 #include <debug.h>
 #include <system/boot.h>

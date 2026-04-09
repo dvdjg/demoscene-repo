@@ -1,3 +1,12 @@
+/*
+ * Prisms — fake **3D prisms** in polar coords, drawn as spans + hardware sprites.
+ *
+ * `PrismT` holds face edges in polar form; CPU projects to `SpanT` and fills. Single
+ * bitplane playfield (`DEPTH 1`) with colour cycling; `sprite.c` may be used for
+ * highlights. Shading uses fixed-point shifts (`shl12`).
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include "effect.h"
 #include "copper.h"
 #include "blitter.h"

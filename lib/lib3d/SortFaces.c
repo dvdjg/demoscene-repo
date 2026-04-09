@@ -1,4 +1,11 @@
 /*
+ * Software 3D math (lib3d): transforms, sorting — CPU-side; drawing uses blitter/copper.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
+/*
  * SortFaces — Ordena las caras visibles del objeto por Z medio (suma de z de los 3 vértices).
  * Rellena visibleFace con pares (z, índice_cara) y llama a SortItemArray para pintar
  * de atrás adelante (painter's algorithm). Incluye un guard (0, -1) al final de la lista.

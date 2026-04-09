@@ -1,3 +1,10 @@
+/*
+ * Fixed-width type aliases for Amiga targets.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef __TYPES_H__
 #define __TYPES_H__
 

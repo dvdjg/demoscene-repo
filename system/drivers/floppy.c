@@ -1,3 +1,17 @@
+/*
+ * Low-level floppy disk MFM read: motor, seek, IRQ-driven sector DMA.
+ *
+ * Purpose: trackmo demos stream sectors without AmigaDOS; this driver talks to
+ * CIAB disk select lines, the disk DMA hardware, and decodes MFM layout (see
+ * comment block below for Amiga track format). Uses interrupts and optional
+ * tasking to wait for completion.
+ *
+ * Why hardware DMA: reading a whole sector by CPU bit-banging the disk would be
+ * far too slow; the disk subsystem is wired for DMA into CHIP buffers.
+ *
+ * HRM (disk, DMA): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * Track format reference (external): http://lclevy.free.fr/adflib/adf_info.html#p22
+ */
 #include <custom.h>
 #include <common.h>
 #include <debug.h>
@@ -55,10 +69,11 @@ typedef struct Sector {
 
 struct File {
   FileOpsT *ops;
+  /* Absolute byte offset in disk image abstraction. */
   int pos;
 
   short headDir;    /* determine PRB.DSKDIREC bit */
-  short trackNum;   /* determine PRB.DSKSIDE bit */
+  short trackNum;   /* current physical track+side index */
   CIATimerT *fdtmr;
 
   u_char prb;       /* caches CIAB PRB register */
@@ -77,6 +92,7 @@ static void StepHeads(FileT *f) {
   volatile u_char *cia = (u_char *)&ciab->ciaprb;
   u_char prb = f->prb;
 
+  /* Pulse STEP line with drive selected. */
   *cia = prb | CIAF_DSKDESEL;
   *cia = prb & ~CIAF_DSKSTEP;
   *cia = prb;
@@ -148,7 +164,8 @@ static void FloppyMotorOn(FileT *f) {
 
   f->prb = prb & ~CIAF_DSKMOTOR;
 
-  /* TODO Or wait 500ms? */
+  /* NOTE: possible issue: motor spin-up timing may depend on specific drives;
+   * current code only waits for DSKRDY and may be marginal on slow hardware. */
   WaitDiskReady();
 }
 
@@ -160,7 +177,8 @@ static void FloppyMotorOff(FileT *f) {
   *cia = prb | CIAF_DSKMOTOR;
   *cia = prb;
 
-  /* TODO: Wait for motor to turn off? */
+  /* NOTE: possible issue: no explicit spin-down wait; usually fine but timing-sensitive
+   * code should not assume immediate stop on all mechanisms. */
   f->prb = prb | CIAF_DSKMOTOR;
 }
 
@@ -184,7 +202,7 @@ static void FloppyTrackRead(FileT *f, short trknum) {
 
   WaitTimerSleep(f->fdtmr, DISK_SETTLE);
 
-  custom->dsklen = 0; /* Make sure the DMA for the disk is turned off. */
+  custom->dsklen = 0; /* Make sure disk DMA is disabled before re-arming. */
   ClearIRQ(INTF_DSKBLK);
   EnableDMA(DMAF_DISK);
 
@@ -208,10 +226,13 @@ static inline SectorT *HeaderToSector(uint16_t *header) {
   return (SectorT *)((uintptr_t)header - offsetof(SectorT, info[0]));
 }
 
+/* DecodeLong — combine odd/even MFM words into one decoded 32-bit value.
+ * mask=0x55555555 selects data bits while clock bits are discarded. */
 static inline u_int DecodeLong(u_int odd, u_int even, u_int mask) {
   return ((odd & mask) << 1) | (even & mask);
 }
 
+/* FindSectorHeader — scan forward for sync marks and return decoded header pointer. */
 static SectorT *FindSectorHeader(void *ptr) {
   uint16_t *data = ptr;
   /* Find synchronization marker and move to first location after it. */
@@ -229,7 +250,7 @@ static bool FloppyTrackDecode(FileT *f, short trknum) {
   SectorT *sector;
   short secnum = NSECTORS;
 
-  /* Skip first word if it is not corrupted. */
+  /* Skip initial sync word if present. */
   if (*data == DSK_SYNC)
     data++;
 
@@ -249,7 +270,7 @@ static bool FloppyTrackDecode(FileT *f, short trknum) {
           sector, info.sectorNum, info.trackNum);
     Assert(info.sectorNum < NSECTORS);
 
-    /* Decode sector! */
+    /* Decode one 512-byte sector payload into linear track buffer by sectorNum. */
     {
       u_int *dst = (void *)buf + info.sectorNum * SECTOR_SIZE;
       u_int *odd = sector->data[0];
@@ -309,11 +330,12 @@ FileT *FloppyOpen(int num) {
     custom->dsksync = DSK_SYNC;
     custom->adkcon = ADKF_SETCLR | ADKF_MFMPREC | ADKF_WORDSYNC | ADKF_FAST;
 
-    /* Default value of CIAB PRB value that selects controlled floppy drive. */
+    /* Default CIAB PRB value selecting target drive number. */
     f->prb = CIAF_DSKMOTOR | CIAF_DSKSTEP | CIAF_DSKDESEL;
     f->prb &= ~__BIT(CIAB_DSKSEL0 + num);
     ciab->ciaprb = f->prb;
 
+    /* Install disk-block interrupt before first DMA transfer. */
     DisableDMA(DMAF_DISK);
     SetIntVector(INTB_DSKBLK, DiskBlockInterrupt, NULL);
     ClearIRQ(INTF_DSKBLK);
@@ -347,6 +369,8 @@ static void FloppyClose(FileT *f) {
   MemFree(f);
 }
 
+/* FloppyRead — cached-track reader:
+ * decode track on boundary crossing, then memcpy requested subrange. */
 static int FloppyRead(FileT *f, void *buf, u_int nbyte) {
   int left = nbyte;
 
@@ -376,7 +400,7 @@ static int FloppyRead(FileT *f, void *buf, u_int nbyte) {
       f->trkInBuf = trknum;
     }
 
-    /* Read to the end of track or less. */
+    /* Consume until end of current decoded track (or less). */
     size = min(left, TRACK_SIZE - trkoff);
 
     memcpy(buf, f->decoded + trkoff, size);

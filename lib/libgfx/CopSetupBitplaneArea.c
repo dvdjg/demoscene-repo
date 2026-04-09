@@ -1,5 +1,20 @@
+/*
+ * Graphics helper (libgfx): bitmaps, lines, copper helpers, etc.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <copper.h>
 
+/*
+ * CopSetupBitplaneArea — point BPLxPT at a sub-rectangle of a larger bitmap + set modulo.
+ *
+ * Used for scrolling windows: `start` offsets into CHIP plane data; modulo reduces
+ * effective fetch width to `w`. Minimum width 32 pixels (two words) — hardware quirk.
+ * x.hpos adjusted by sub-word offset for fine horizontal alignment (BPLCON1 elsewhere).
+ * Delegates fetch timing to CopSetupBitplaneFetch.
+ */
 void CopSetupBitplaneArea(CopListT *list, u_short mode, u_short depth,
                           const BitmapT *bitmap, hpos x, vpos y __unused,
                           const Area2D *area)

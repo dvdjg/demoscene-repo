@@ -1,3 +1,10 @@
+/*
+ * Graphics helper (libgfx): bitmaps, lines, copper helpers, etc.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifdef __COPPER_H__
 #define STORE(reg, val) CopMove16(list, reg, val)
 

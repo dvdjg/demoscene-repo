@@ -1,3 +1,10 @@
+/*
+ * bumpmap-rgb — RGB bump mapping (software lighting).
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <color.h>

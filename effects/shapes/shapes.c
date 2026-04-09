@@ -1,3 +1,28 @@
+/*
+ * Shapes — 2D mesh filled with the classic Amiga **EOR outline + blitter fill** recipe.
+ *
+ * **Pipeline:** For each frame, one bitplane (`plane`) is cleared, then the polygon
+ * outline is drawn with `BlitterLine` in EOR mode (`LINE_EOR|LINE_ONEDOT`). EOR toggles
+ * bits along edges; `BlitterFill` then flood-fills interior pixels where the scanline
+ * crossing count is odd (standard “vector fill” on OCS). Only that plane is redrawn;
+ * the other planes are left as-is (still zero after `BitmapClear` in Init), so the
+ * backdrop is effectively pen 0 everywhere except the filled region.
+ *
+ * **Geometry:** `data/night.c` is a misnomer — it defines the static `ShapeT shape`
+ * (vertices + polygon index lists), not a raster background.
+ *
+ * **Colour motion:** The filled geometry is not recoloured in software — the copper
+ * still reads physical planes 0..3 in order. Remapping `bplptr[i]` to
+ * `screen->planes[(plane + i) % DEPTH]` rotates which colour index (palette entry) the
+ * filled area uses each time `plane` advances, so the shape appears to cycle through
+ * `shapes_colors` without touching pixel data. `planeC` slows the advance to every other
+ * frame for a calmer pulse.
+ *
+ * **Clipping:** `ClipWin` matches the playfield so `ClipPolygon2D` and edge flags reject
+ * polygons fully outside the screen before touching the blitter.
+ *
+ * HRM (blitter line, fill, bitplanes): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <2d.h>
 #include <blitter.h>
@@ -20,12 +45,12 @@ static short plane, planeC;
 static void Init(void) {
   screen = NewBitmap(WIDTH, HEIGHT, DEPTH, BM_CLEAR);
 
-  /* Set up clipping window. */
   ClipWin.minX = fx4i(0);
   ClipWin.maxX = fx4i(319);
   ClipWin.minY = fx4i(0);
   ClipWin.maxY = fx4i(255);
 
+  /* Start drawing/filling on the top bitplane; remapping will expose it as different pens. */
   plane = DEPTH - 1;
   planeC = 0;
 
@@ -52,6 +77,7 @@ static void Kill(void) {
 
 static Point2D tmpPoint[2][16];
 
+/* Fixed-point vertices → integer pixels; chained segments close the polygon for EOR fill. */
 static void DrawPolygon(Point2D *out, short n) {
   short *pos = (short *)out;
   short x1, y1, x2, y2;
@@ -90,6 +116,7 @@ static void DrawShape(ShapeT *shape) {
       *out++ = point[k];
     }
 
+    /* `outside` bitmask: skip if every vertex shares an out-of-band flag (all left, etc.). */
     if (!outside) {
       Point2D *out = tmpPoint[1];
       n = ClipPolygon2D(tmpPoint[0], &out, n, clipFlags);
@@ -121,6 +148,7 @@ static void Render(void) {
   }
   ProfilerStop(Shapes);
 
+  /* Permute plane order for Denise so the filled plane maps to different colour indices. */
   for (i = 0; i < DEPTH; i++) {
     short j = (plane + i) % DEPTH;
     CopInsSet32(&bplptr[i], screen->planes[j]);

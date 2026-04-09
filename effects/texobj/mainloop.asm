@@ -1,3 +1,8 @@
+; texobj — DrawTriPart: scanline inner loop for affine texture mapping.
+; Called from texobj.c DrawTriangle; SideT layout must match STRUCTURE SIDE below.
+; Interpolates u,v across the span between left/right edges (fixed-point), writes
+; chunky indices into the WIDTH×HEIGHT buffer (see Pixel[] scramble in C).
+
         include 'exec/types.i'
 
         xdef    _DrawTriPart

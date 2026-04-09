@@ -1,5 +1,19 @@
+/*
+ * Graphics helper (libgfx): bitmaps, lines, copper helpers, etc.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <sprite.h>
 
+/*
+ * SpriteUpdatePos — rewrite SPRxPOS/SPRxCTL words in a SpriteT (raw struct overlay).
+ *
+ * hstart/vstart: beam position in CopWait coordinates (see beampos.h). Height from
+ * SpriteHeight(spr) drives VSTOP. Low bits of HSTART split across POS and CTL per HRM.
+ * Writes bytes in hardware order — not the SPRPOS/SPRCTL macros (direct field poke).
+ */
 void SpriteUpdatePos(SpriteT *spr, hpos hstart, vpos vstart) {
   u_char *raw = (u_char *)spr;
   short hs = hstart.hpos;

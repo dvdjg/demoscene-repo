@@ -1,3 +1,13 @@
+/*
+ * Arena-based heap with boundary tags (malloc/free for CHIP/FAST/public).
+ *
+ * Purpose: after Loader registers memory regions from BootData, this allocator
+ * hands out aligned blocks; supports canaries and splitting/merging free
+ * blocks. Demos need explicit CHIP vs FAST placement for DMA-visible buffers.
+ *
+ * Why not OS AllocMem: bare-metal trackmo has no Exec; this is the lightweight
+ * substitute.
+ */
 #include <cdefs.h>
 #include <common.h>
 #include <debug.h>
@@ -199,6 +209,8 @@ static inline void ArenaDecFree(ArenaT *ar, u_int sz) {
 
 static ArenaT *FirstArena;
 
+/* AddMemory — register one physical range as allocator arena.
+ * The range is alignment-trimmed and initialized as one large FREE block. */
 void AddMemory(void *ptr, u_int size, u_int attributes) {
   ArenaT *ar = (ArenaT *)roundup((uintptr_t)ptr, ALIGNMENT);
   void *end =
@@ -437,6 +449,7 @@ void *MemAlloc(u_int size, u_int attributes) {
   ArenaT *ar;
   void *ptr;
 
+  /* First arena matching requested attributes that can satisfy size wins. */
   for (ar = FirstArena; ar != NULL; ar = ar->succ) {
     if (ar->attributes & attributes)
       if ((bt = ArenaMemAlloc(ar, size)))
@@ -463,6 +476,7 @@ void MemFree(void *p) {
     ArenaMemFree(ArenaOf(p), p);
 }
 
+/* MemResize — in-place shrink/grow when possible, otherwise allocate+copy+free. */
 void *MemResize(void *old_ptr, u_int size) {
   void *new_ptr;
   ArenaT *ar;

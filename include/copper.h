@@ -1,3 +1,13 @@
+/*
+ * Copper list helpers — programmable display sync (MOVE/WAIT/SKIP).
+ *
+ * English tutorial: The Copper runs its own microprogram synchronized to the
+ * video beam. It can change palette, pointers, and window registers every few
+ * pixels/lines — the classic way to do raster bars, splits, or HAM tricks without
+ * CPU timing loops. WAIT timing quirks (VP/HP ranges) are documented in HRM
+ * "Copper Hardware"; PAL assumptions are noted below in the original comments.
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #ifndef __COPPER_H__
 #define __COPPER_H__
 

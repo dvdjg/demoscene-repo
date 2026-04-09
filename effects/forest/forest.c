@@ -1,3 +1,10 @@
+/*
+ * forest — Layered forest scene with moon/bat sprites.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>

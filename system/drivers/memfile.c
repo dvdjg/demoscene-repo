@@ -1,3 +1,9 @@
+/*
+ * Memory-backed FileT (read embedded MemBlockT chains).
+ *
+ * Purpose: lets the loader treat ROM-linked blobs like a seekable file without
+ * copying them to a separate buffer layout.
+ */
 #include <debug.h>
 #include <string.h>
 #include <system/errno.h>
@@ -7,7 +13,9 @@
 
 struct File {
   FileOpsT *ops;
+  /* Linked block list representing file payload in memory. */
   const MemBlockT *blocks;
+  /* Current byte offset across the virtual concatenated stream. */
   u_int offset;
 };
 
@@ -23,6 +31,7 @@ static FileOpsT MemOps = {
 };
 
 FileT *MemOpen(const MemBlockT *blocks) {
+  /* Caller keeps ownership of block data; FileT only stores descriptors. */
   FileT *f = MemAlloc(sizeof(FileT), MEMF_PUBLIC);
   f->ops = &MemOps;
   f->blocks = blocks;
@@ -34,6 +43,7 @@ static void MemClose(FileT *f) {
   MemFree(f);
 }
 
+/* MemRead — linear read across MemBlock chain without extra buffering. */
 static int MemRead(FileT *f, void *buf, u_int nbyte) {
   const MemBlockT *block = f->blocks;
   u_int offset = f->offset;
@@ -71,6 +81,7 @@ static int MemSeek(FileT *f, int offset, int whence) {
   const MemBlockT *block = f->blocks;
   int length;
 
+  /* Compute virtual concatenated size of all blocks. */
   for (length = 0; block->length; block++)
     length += block->length;
 
@@ -82,6 +93,7 @@ static int MemSeek(FileT *f, int offset, int whence) {
     return EINVAL;
   }
 
+  /* Clamp seek target to [0, total_length]. */
   if (offset < 0) {
     offset = 0;
   } else if (offset > length) {

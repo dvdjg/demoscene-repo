@@ -1,3 +1,24 @@
+/*
+ * Thunders — pseudo-3D energy grid over a perspective floor, 3 bitplanes + DMA sprites.
+ *
+ * FloorPrecalc builds vert[]: each index is a column in world space; entries give the
+ * screen segment from horizon (FAR_Y) to bottom (near edge), with x clipped to the
+ * screen. horiz[] maps a grid index to scanline y for horizontal band placement.
+ * Together they drive DrawStripes: blitter line mode draws vertical “rails” on selected
+ * bitplanes; FillStripes then OR-fills the trapezoid above the horizon so stripes read
+ * as solid beams.
+ *
+ * Tile colours (texture pixmap + colortab) pulse via ControlTileColors (sine + decaying
+ * tileEnergy spikes). ColorizeUpperHalf / LowerHalf issue per-band color[] copper
+ * waits tied to horiz[] so each pseudo-tile row gets animated pens; gaps reset to BGCOL.
+ *
+ * MakeFloorCopperList flips the floor bitmap (bplpt at last line), applies negative
+ * bplmod for line doubling in the upper half, clears mod at mid-screen, and attaches
+ * thunder[] sprite pairs for highlights.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <color.h>
@@ -13,13 +34,14 @@
 #define DEPTH 3
 #define BGCOL 0x012
 
+/* World columns along X; SIZE×SIZE logical tiles; TILESIZE columns per tile band. */
 #define N 1024
 #define SIZE 8
 #define TILESIZE (N / SIZE)
+/* Vertical gap between colour-band waits (see Colorize*). */
 #define GAP 24
 
-/* These are selected in such a way so line lenght
- * (HEIGHT - FAR_Y) is divisible by 8. */
+/* Chosen so (HEIGHT - FAR_Y) is divisible by 8 (FillStripes height alignment). */
 #define NEAR_Z (256 + 32)
 #define FAR_Z 512
 #define FAR_Y (HEIGHT * NEAR_Z / FAR_Z)
@@ -27,24 +49,29 @@
 
 static BitmapT *screen[2];
 static CopListT *cp[2];
+/* Packed pen words per tile for copper (after ControlTileColors). */
 static u_short tileColor[SIZE * SIZE];
 static short tileCycle[SIZE * SIZE];
+/* Short pulse amplitude; decremented each frame when > 0. */
 static short tileEnergy[SIZE * SIZE];
 static short active;
 
 #include "data/thunders.c"
 #include "data/thunders-floor.c"
 
+/* One perspective column: top x at horizon, bottom x at screen edge, bottom y. */
 typedef struct {
   short x1, x2, y2;
   short pad;
 } LineDataT;
 
 static LineDataT vert[N];
+/* Row index i → scanline where horizontal grid line i would cross the view. */
 static short horiz[N];
 
 extern void InitColorTab(void);
 
+/* Build vert from far/near projection; horiz for band positions; RGB12 lookup tables. */
 static void FloorPrecalc(void) {
   short i;
 
@@ -80,6 +107,7 @@ static void FloorPrecalc(void) {
 static void Load(void) {
   short i;
 
+  /* Thunder logo sprites in a horizontal strip (pairs thunder[i], thunder[i+1]). */
   for (i = 0; i < 320 / 16; i++) {
     short xo = (WIDTH - 32) / 2 + (i & 1 ? 16 : 0);
     short yo = (HEIGHT - 128) / 2;
@@ -92,6 +120,7 @@ static void Load(void) {
   ITER(i, 0, SIZE * SIZE - 1, tileCycle[i] = random() & SIN_MASK);
 }
 
+/* Base copper: bitplanes + sprite control links (sprites positioned in MakeFloorCopperList). */
 static CopListT *MakeCopperList(short i) {
   CopListT *cp = NewCopList((HEIGHT - FAR_Y) * 16 + 200);
   CopSetupBitplanes(cp, screen[i], DEPTH);
@@ -123,6 +152,7 @@ static void Kill(void) {
   DeleteBitmap(screen[1]);
 }
 
+/* Blitter line mode (EOR single-pixel) into one bitplane; shared setup in DrawStripes. */
 static void DrawLine(void *data asm("a2"), short x1 asm("d2"), short y1 asm("d3"), short x2 asm("d4"), short y2 asm("d5")) {
   u_short bltcon1 = LINEMODE | ONEDOT;
   void *start = data;
@@ -180,10 +210,15 @@ static void DrawLine(void *data asm("a2"), short x1 asm("d2"), short y1 asm("d3"
   }
 }
 
+/*
+ * March SIZE+1 vertical stripe pairs across the grid; xo scrolls world columns.
+ * Bitplane mask from mod16(kxo,7)+1 selects which planes get lines; right edge
+ * closure when clipped to WIDTH-1.
+ */
 static void DrawStripes(short xo, short kxo) {
   short k;
 
-  /* Setup fast line drawing. */
+  /* Shared blitter state for the following DrawLine calls. */
   WaitBlitter();
   custom->bltafwm = -1;
   custom->bltalwm = -1;
@@ -237,6 +272,7 @@ static void DrawStripes(short xo, short kxo) {
   }
 }
 
+/* OR-fill from bottom-right across upper trapezoid (sky / beam region above horizon). */
 static void FillStripes(u_short plane) {
   void *bltpt = screen[active]->planes[plane] + (HEIGHT * WIDTH) / 8 - 2;
   u_short bltsize = ((HEIGHT - FAR_Y - 1) << 6) | (WIDTH >> 4);
@@ -254,6 +290,7 @@ static void FillStripes(u_short plane) {
   custom->bltsize = bltsize;
 }
 
+/* Animate 8×8 tile pens: sine phase per tile, optional energy boost, colortab remap. */
 void ControlTileColors(void) {
   u_short *src = texture.pixels, *dst = tileColor;
   short *energy = tileEnergy;
@@ -291,6 +328,7 @@ void ControlTileColors(void) {
   }
 }
 
+/* Reflected floor: waits count from top of display; bands use tile column (kyo). */
 static void ColorizeUpperHalf(CopListT *cp, short yi, short kyo) {
   short k;
   short y0 = HEIGHT;
@@ -333,6 +371,7 @@ static void ColorizeUpperHalf(CopListT *cp, short yi, short kyo) {
   }
 }
 
+/* Normal Y: colour rows from FAR_Y down; same column indexing as upper half. */
 static void ColorizeLowerHalf(CopListT *cp, short yi, short kyo) {
   short k;
   short y0 = FAR_Y;
@@ -373,6 +412,10 @@ static void ColorizeLowerHalf(CopListT *cp, short yi, short kyo) {
   }
 }
 
+/*
+ * Per-frame copper: floor = flipped bitplanes + line-doubling mod until mid-screen;
+ * sprite pair from thunder[] anim; tile colour lists; FillStripes on planes 1 then 2.
+ */
 static void MakeFloorCopperList(CopListT *cp, short yo, short kyo) {
   CopListReset(cp);
   {
@@ -392,7 +435,6 @@ static void MakeFloorCopperList(CopListT *cp, short yo, short kyo) {
     CopInsSetSprite(&sprptr[1], thunder[i+1]);
   }
 
-  /* Clear out the colors. */
   CopSetColor(cp, 0, BGCOL);
   CopLoadColors(cp, thunder_colors, 16);
 
@@ -414,15 +456,18 @@ PROFILE(Thunders);
 static void Render(void) {
   ProfilerStart(Thunders);
 
+  /* Only clear the floor band; sky strip redrawn by stripes + fill. */
   BitmapClearArea(screen[active], &((Area2D){0, FAR_Y, WIDTH, HEIGHT - FAR_Y}));
 
   {
+    /* Scroll grid in world space; map to tile indices kxo, kyo for colours. */
     short xo = (N / 4) + normfx(SIN(frameCount * 16) * N * 15 / 64);
     short yo = (N / 4) + normfx(COS(frameCount * 16) * N / 4);
     short kxo = 7 - xo * SIZE / N;
     short kyo = 7 - yo * SIZE / N;
 
     {
+      /* One tile gets a bright pulse (energy spike). */
       short cyo = 7 - (yo + SIZE * 4) * SIZE / N;
       tileEnergy[((cyo - 3) & 7) * 8 + ((kxo - 2) & 7)] = 32;
     }
@@ -435,6 +480,7 @@ static void Render(void) {
 
   ProfilerStop(Thunders);
 
+  /* Upload rebuilt copper; VBlank displays it while other buffer is prepared next frame. */
   CopListRun(cp[active]);
   TaskWaitVBlank();
   active ^= 1;

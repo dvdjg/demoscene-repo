@@ -1,12 +1,34 @@
+/*
+ * Blitter-oriented code (libblit): DMA-friendly operations.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <blitter.h>
 
-/* Bitplane adder with saturation. */
+/*
+ * BitmapAddSaturated — dst += src with saturation in planar domain.
+ *
+ * The blitter is used as a bitwise ALU:
+ * - plane 0 uses HALF_ADDER / HALF_ADDER_CARRY,
+ * - remaining planes use FULL_ADDER / FULL_ADDER_CARRY,
+ * - final pass ORs saturation carry into all destination planes.
+ *
+ * carry_bm provides two temporary 1bpp work planes (ping-pong carry0/carry1).
+ * C equivalent would be per-pixel integer add + clamp; this blitter version is
+ * far faster on OCS/ECS because each pass runs by DMA over full words.
+ */
 void BitmapAddSaturated(const BitmapT *dst_bm, short dx, short dy,
                         const BitmapT *src_bm, const BitmapT *carry_bm)
 {
+  /* Byte offset in destination plane where source top-left lands. */
   u_int dst_begin = ((dx & ~15) >> 3) + dy * (short)dst_bm->bytesPerRow;
+  /* Modulo for shifted copies (one extra fetched word, thus "-2"). */
   u_short dst_modulo = (dst_bm->bytesPerRow - src_bm->bytesPerRow) - 2;
+  /* Horizontal sub-word shift encoded for BLTCON0 low nibble. */
   u_short src_shift = rorw(dx & 15, 4);
+  /* +1 word because shifted path may consume one extra word. */
   u_short bltsize = ((src_bm->height << 6) | (src_bm->bytesPerRow >> 1)) + 1;
   void *carry0 = carry_bm->planes[0];
   void *carry1 = carry_bm->planes[1];
@@ -19,7 +41,7 @@ void BitmapAddSaturated(const BitmapT *dst_bm, short dx, short dy,
 
     WaitBlitter();
 
-    /* Initialize blitter */
+    /* Common register baseline for arithmetic passes. */
     custom->bltamod = -2;
     custom->bltbmod = dst_modulo;
     custom->bltcmod = 0;
@@ -27,7 +49,7 @@ void BitmapAddSaturated(const BitmapT *dst_bm, short dx, short dy,
     custom->bltafwm = -1;
     custom->bltalwm = 0;
 
-    /* Bitplane 0: half adder with carry. */
+    /* Bitplane 0: half adder with carry-out only. */
     custom->bltapt = aptr;
     custom->bltbpt = bptr;
     custom->bltdpt = carry0;
@@ -47,7 +69,7 @@ void BitmapAddSaturated(const BitmapT *dst_bm, short dx, short dy,
   {
     short n = src_bm->depth - 1;
 
-    /* Bitplane 1-n: full adder with carry. */
+    /* Bitplane 1..n-1: full adder with incoming carry from previous plane. */
     while (--n >= 0) {
       void *aptr = (*src++);
       void *bptr = (*dst++) + dst_begin;
@@ -74,7 +96,7 @@ void BitmapAddSaturated(const BitmapT *dst_bm, short dx, short dy,
     }
   }
 
-  /* Apply saturation bits. */
+  /* Saturation pass: OR remaining carry into all destination planes. */
   {
     short n = src_bm->depth;
 

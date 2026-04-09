@@ -1,3 +1,11 @@
+/*
+ * PlayPT — ProTracker (PTPlayer) replayer with linked Module / Samples blobs.
+ *
+ * Uses `ptplayer.h`; optional `AKLANG` / `DELTA` build hooks. Console UI, 1bpp screen,
+ * `stopped` flag for transport control. Same effect framework as other `play*` demos.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <ptplayer.h>

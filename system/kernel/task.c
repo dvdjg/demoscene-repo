@@ -1,3 +1,16 @@
+/*
+ * Cooperative multitasking kernel (optional): ready/wait lists, stack frames.
+ *
+ * Purpose: when MULTITASK is defined, effects and drivers can run as tasks
+ * with explicit TaskYield/TaskWait. TaskRun fabricates an initial exception
+ * frame on the task stack so the CPU can "return" into the entry function —
+ * classic trick on M68k.
+ *
+ * Why optional: many demos run everything in main; multitask adds complexity
+ * but helps modularize IRQ vs foreground work.
+ *
+ * RKM (Exec tasks — conceptual parallel only): https://archive.org/details/amiga-rom-kernel-reference-manual
+ */
 #include <debug.h>
 #include <common.h>
 #include <string.h>
@@ -8,8 +21,11 @@
 static TaskT MainTask;
 TaskT *CurrentTask = &MainTask;
 
+/* ReadyList: runnable tasks ordered by priority (0 = highest).
+ * WaitList: tasks blocked on event bitmasks. */
 static TaskListT ReadyList = TAILQ_HEAD_INITIALIZER(ReadyList);
 static TaskListT WaitList = TAILQ_HEAD_INITIALIZER(WaitList);
+/* Set by ISR-side wakeups when a higher-priority task should run on interrupt exit. */
 u_char NeedReschedule = 0;
 
 static __unused const char *TaskState[] = {
@@ -56,7 +72,7 @@ void TaskInit(TaskT *tsk, const char *name, void *stkptr, u_int stksz) {
 void TaskRun(TaskT *tsk, u_char prio, void (*fn)(void *), void *arg) {
   void *sp = tsk->stkUpper;
 
-  PushLong(0); /* last return address at the bottom of stack */
+  PushLong(0); /* Sentinel return address at stack bottom. */
 
   /* Exception stack frame starts with the return address, unless we're running
    * on 68010 and above. Then we need to put format vector word on stack. */
@@ -65,9 +81,10 @@ void TaskRun(TaskT *tsk, u_char prio, void (*fn)(void *), void *arg) {
   PushLong((u_int)fn); /* return address */
   PushWord(SR_S);      /* status register */
 
-  sp -= 6 * sizeof(u_int); /* A6 to A1 */
+  /* Build synthetic context image expected by context switch assembly. */
+  sp -= 6 * sizeof(u_int); /* A6..A1 */
   PushLong((u_int)arg);    /* A0 */
-  sp -= 9 * sizeof(u_int); /* D7 to D0 and USP */
+  sp -= 9 * sizeof(u_int); /* D7..D0 + USP */
 
   tsk->ctx = sp;
   tsk->prio = prio;
@@ -79,8 +96,7 @@ void ReadyAdd(TaskT *tsk) {
     TAILQ_INSERT_HEAD(&ReadyList, tsk, node);
   } else {
     TaskT *before = TAILQ_FIRST(&ReadyList);
-    /* Insert before first task with lower priority.
-    * Please note that 0 is the highest priority! */
+    /* Insert before first task with lower priority (0 is highest priority). */
     while (before != NULL && before->prio <= tsk->prio)
       before = TAILQ_NEXT(before, node);
     if (before == NULL)
@@ -148,6 +164,7 @@ void TaskSuspend(TaskT *tsk) {
     TAILQ_REMOVE(&ReadyList, tsk, node);
     tsk->state = TS_SUSPENDED;
   } else {
+    /* NULL means "current task". */
     tsk = CurrentTask;
   }
   tsk->state = TS_SUSPENDED;
@@ -174,6 +191,7 @@ u_int TaskWait(u_int eventSet) {
   Assert(GetIPL() > IPL_NONE);
   Assume(eventSet != 0);
   tsk->waitpt = __builtin_return_address(0);
+  /* eventSet is both wait mask (input) and wake reason mask (output). */
   tsk->eventSet = eventSet;
   tsk->state = TS_BLOCKED;
   TAILQ_REMOVE(&ReadyList, tsk, node);
@@ -193,6 +211,7 @@ static int _TaskNotify(u_int eventSet) {
   TAILQ_FOREACH_SAFE(tsk, &WaitList, node, tmp) {
     if (tsk->eventSet & eventSet) {
       Debug("Waking up " TI_FMT " (got $%08x).", TI_ARGS(tsk), eventSet);
+      /* Return only matched events to the waiting task. */
       tsk->eventSet &= eventSet;
       TAILQ_REMOVE(&WaitList, tsk, node);
       ReadyAdd(tsk);

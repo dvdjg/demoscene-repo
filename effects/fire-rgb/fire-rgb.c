@@ -1,3 +1,10 @@
+/*
+ * fire-rgb — RGB palette fire effect.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>

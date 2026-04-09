@@ -1,3 +1,32 @@
+/*
+ * Plotter — spirograph-style additive flares + copper-driven sprite columns + gradient sky.
+ *
+ * `DrawPlotter` places NUM stamps per frame along a polar rose (`SIN`/`COS` with `ARMS`
+ * frequency); `BitmapAddSaturated` merges 16×16 flare tiles into the playfield using
+ * the ripple-carry style blitter add (see lib `BitmapAddSaturated`). `carry` is a
+ * scratch plane buffer for the multi-pass add.
+ *
+ * The copper list is large: every scanline it (1) moves eight sprites’ horizontal
+ * positions for a left block, (2) loads three RGB triplets into several colour
+ * registers from a vertical gradient stream (`background_cols_pixels`), (3) repeats
+ * sprite positions for a right block after CopWait at x=128 — so the same 8
+ * sprites draw two vertical “curtain” bands with per-line hue shifts.
+ *
+ * `Render` swaps background sprite sets (`background_1/2/3`) every few frames for
+ * animation; `bplptr` tracks the double-buffered bitmap.
+ *
+ * Why only eight sprites for two columns: OCS allows eight DMA sprites. The same
+ * eight are drawn twice per scanline — WAIT at x=128 moves their HPOS — so you get
+ * two vertical “curtains” without exceeding hardware limits (time-slicing the same
+ * sprite objects at two horizontal positions).
+ *
+ * Why the same RGB triplet is written to four groups of colour registers: sprite
+ * colour attachment uses pens 16–31 (four 3-colour blocks for pairs 0–7). Duplicating
+ * the gradient keeps all eight sprites visually matched to the per-line sky gradient.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <circle.h>
@@ -13,7 +42,7 @@
 #define SIZE 16
 #define NUM 37
 #define ARMS 3
-
+/* Amplitude clamp for rose radius (see DrawPlotter). */
 #define MAX (96+16)
 
 static __code CopListT *cp;
@@ -21,7 +50,9 @@ static __code CopInsPairT *bplptr;
 static __code CopInsPairT *sprptr;
 static __code BitmapT *screen[2];
 static __code short active = 0;
+/* BitmapAddSaturated scratch (ripple-carry across two planes). */
 static __code BitmapT *carry;
+/* Pre-cut 16×16 flare tiles from atlas flares (intensity index 0..7). */
 static __code BitmapT *flare[8];
 
 #include "data/plotter-flares.c"
@@ -30,6 +61,10 @@ static __code BitmapT *flare[8];
 #include "data/background-3.c"
 #include "data/gradient.c"
 
+/*
+ * Per-line: position sprites for the left column, load gradient pens, WAIT mid-line,
+ * reposition the same sprites for the right column — all before the beam passes.
+ */
 static CopListT *MakeCopperList(void) {
   CopListT *cp = NewCopList(50 + HEIGHT * (9 + 9 + 13));
   u_short *cols = background_cols_pixels;
@@ -52,6 +87,7 @@ static CopListT *MakeCopperList(void) {
     for (j = 0; j < 8; j++)
       CopMove16(cp, spr[j].pos, SPRPOS(DIWHP + 16*j + 32, DIWVP + i));
 
+    /* One word stride per row in background_cols, then three RGB12 words. */
     cols++;
     c0 = *cols++;
     c1 = *cols++;
@@ -106,6 +142,7 @@ static void Init(void) {
   LoadColors(background_colors, 24);
   LoadColors(background_colors, 28);
 
+  /* Sprites in front of bitplanes (priority bits in bplcon2). */
   custom->bplcon2 = 0;
 
   cp = MakeCopperList();
@@ -123,6 +160,7 @@ static void Kill(void) {
   DeleteCopList(cp);
 }
 
+/* Lay down NUM flare sprites along a Lissajous/spiro path; intensity index from |g|. */
 static void DrawPlotter(BitmapT *screen, short frameCount) {
   short i, a;
   short t = frameCount * 5;
@@ -137,6 +175,7 @@ static void DrawPlotter(BitmapT *screen, short frameCount) {
     if (f < 0)
       f = -f;
 
+    /* Occasional full-bright stamp on odd indices — breaks uniformity of the rose. */
     if ((i & 1) && (frameCount & 15) < 3)
       f = 7;
 
@@ -164,6 +203,11 @@ static void Render(void) {
   TaskWaitVBlank();
   active ^= 1;
 
+  /*
+   * Sprite definitions are switched after the field so the copper list still
+   * references valid sprpt data for the frame we just displayed; next field uses
+   * the new background_* art.
+   */
   {
     short i;
     short num = mod16(div16(frameCount, 5), 3);

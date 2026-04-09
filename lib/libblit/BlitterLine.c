@@ -1,4 +1,18 @@
+/*
+ * Blitter-oriented code (libblit): DMA-friendly operations.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <blitter.h>
+
+/*
+ * LineMode — (bltcon0_line_bits, bltcon1_line_bits) for OR/XOR and solid/one-dot.
+ * Blitter line mode uses A channel as Bresenham state; C/D as framebuffer.
+ * Octant table below maps dx/dy sign to SUD/SUL/AUL bits in BLTCON1 (HRM line mode).
+ * BlitterLine args in d2–d5: match CpuLine register layout for shared tooling.
+ */
 
 const u_short LineMode[4][2] = {
   {  BC0F_LINE_OR, LINEMODE },
@@ -36,14 +50,26 @@ const u_short LineMode[4][2] = {
  *   6 |   0   0   0
  */
 
+/* line — per-setup state between BlitterLineSetupFull and BlitterLine.
+ * data: target bitplane base pointer.
+ * scratch: optional temporary destination when ONEDOT mode is enabled.
+ * stride: bytes per row in target bitplane.
+ * bltcon0/bltcon1: preselected line mode template bits. */
 struct {
   u_char *data;
-  u_char *scratch;
+  u_char *scratch; /* ONEDOT mode: DMA target to avoid trashing line endpoint word */
   short stride;
   u_short bltcon0;
   u_short bltcon1;
 } line[1];
 
+/*
+ * BlitterLineSetupFull — preconfigure static line-mode registers.
+ *
+ * mode selects OR/XOR + solid/dotted from LineMode[].
+ * pattern is BLTBDAT line texture (bit pattern consumed by line engine).
+ * This split avoids reprogramming invariant registers for every line.
+ */
 void BlitterLineSetupFull(const BitmapT *bitmap, u_short plane,
                           u_short mode, u_short pattern)
 {
@@ -63,6 +89,10 @@ void BlitterLineSetupFull(const BitmapT *bitmap, u_short plane,
   custom->bltdmod = line->stride;
 }
 
+/*
+ * BlitterLine — kick one line after SetupFull. Computes octant, SIGNFLAG, error terms,
+ * BLTSIZE = (dx<<6)+66 (66 = min blit height for line mode per HRM).
+ */
 void BlitterLine(short x1 asm("d2"), short y1 asm("d3"), short x2 asm("d4"), short y2 asm("d5")) {
   u_char *data = line->data;
   u_short bltcon1 = line->bltcon1;
@@ -74,13 +104,14 @@ void BlitterLine(short x1 asm("d2"), short y1 asm("d3"), short x2 asm("d4"), sho
     swapr(y1, y2);
   }
 
-  /* Word containing the first pixel of the line. */
+  /* Address word containing first pixel (planar: 8 pixels per byte). */
   data += line->stride * y1;
   data += (x1 >> 3) & ~1;
 
   dx = x2 - x1;
   dy = y2 - y1;
 
+  /* Octant classification: sets AUL/SUD/SUL flags and may swap dx/dy. */
   if (dx < 0) {
     dx = -dx;
     if (dx >= dy) {
@@ -102,6 +133,10 @@ void BlitterLine(short x1 asm("d2"), short y1 asm("d3"), short x2 asm("d4"), sho
     bltcon1 |= SIGNFLAG;
 
   {
+    /* Pack per-line terms:
+     * - BLTCON0 low nibble: initial bit position (x1 mod 16),
+     * - BLTAMOD/BLTBMOD: Bresenham error increments,
+     * - BLTSIZE: special line-mode encoding ((major_len<<6)+66). */
     u_short bltcon0 = rorw(x1 & 15, 4) | line->bltcon0;
     u_short bltamod = derr - dx;
     u_short bltbmod = dy + dy;

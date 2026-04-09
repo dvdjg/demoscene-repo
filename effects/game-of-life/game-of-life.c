@@ -1,4 +1,13 @@
 /*
+ * game-of-life.c — Conway Game of Life on bitplanes; next state via blitter passes.
+ *
+ * English tutorial (high level): neighbor counting and rule application use scripted
+ * minterm phases (see `games.c`). History shown in darker planes; optional X/Y mirror
+ * via CPU and copper (see body).
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
+/*
  * GameOfLife — Efecto del Juego de la Vida de Conway (reglas clásicas: 2–3 vecinos
  * sobreviven, 3 nacen). El siguiente estado se calcula con el blitter usando minterms
  * y varias pasadas; el resultado se duplica en X (CPU) y en Y (copper). Estados previos

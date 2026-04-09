@@ -1,3 +1,10 @@
+/*
+ * Compression or integrity check (lzsa.h) for packed demo data.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef __LZSA_H__
 #define __LZSA_H__
 

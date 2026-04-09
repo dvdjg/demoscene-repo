@@ -1,3 +1,10 @@
+/*
+ * C-side trap handler: decodes TrapFrameT, logs, and panics.
+ *
+ * Purpose: EnterTrap (asm) passes a pointer to the saved registers; this file
+ * picks the correct PC/SR field for 68000 vs 68010+ fault frames and prints a
+ * human-readable trap name.
+ */
 #include <config.h>
 #include <debug.h>
 #include <system/cpu.h>
@@ -17,6 +24,7 @@ static __unused const char *const trapname[T_NTRAPS] = {
   [T_FMTERR] = "Stack Format Error",
   [T_TRAPINST] = "Trap Instruction"};
 
+/* TrapHandler — normalize CPU-dependent trap frame and print diagnostic dump. */
 void TrapHandler(TrapFrameT *frame) {
   short memflt = frame->trapnum == T_BUSERR || frame->trapnum == T_ADDRERR;
   __unused u_int pc;
@@ -25,6 +33,7 @@ void TrapHandler(TrapFrameT *frame) {
   short supervisor;
   __unused short trap;
 
+  /* 68010+ and 68000 use different frame layouts. */
   if (CpuModel > CPU_68000) {
     pc = frame->m68010.pc;
     sr = frame->m68010.sr;
@@ -86,6 +95,16 @@ void TrapHandler(TrapFrameT *frame) {
       read = frame->m68000_memacc.status & 16;
     }
 
+    /*
+     * data/read interpretation:
+     * - `data` true  => instruction fetch fault, false => data access fault.
+     * - `read` true  => read cycle fault, false => write cycle fault.
+     *
+     * Conceptual C:
+     *   printf("%s %s at 0x%08x\n",
+     *          data ? "Instruction" : "Data",
+     *          read ? "read" : "write", addr);
+     */
     Log("%s %s at $%08x!\n", (data ? "Instruction" : "Data"),
         (read ? "read" : "write"), addr);
   }

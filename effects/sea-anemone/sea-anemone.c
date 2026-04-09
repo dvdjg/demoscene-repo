@@ -1,3 +1,12 @@
+/*
+ * SeaAnemone — organic “tentacle” arms from stacked **circles** + line drawing.
+ *
+ * Pre-rendered circle masks (`circles[]`) seed radial arms (`NARMS`); animation uses
+ * `fastrand` (dual LCG in asm from Atari-forum snippet) for jitter. Combines CpuLine
+ * / Circle helpers and blitter for a soft underwater look. Palette `anemone-pal`.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>

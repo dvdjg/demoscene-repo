@@ -1,3 +1,13 @@
+/*
+ * Simple raster-line profiler (measures work in scanlines).
+ *
+ * Purpose: ReadLineCounter() delta approximates how many display lines a code
+ * block consumed — useful to compare effects or inner loops on real hardware
+ * where cycle-exact profiling is overkill.
+ *
+ * Why lines, not microseconds: on OCS, the display timing is line-based; line
+ * counts map intuitively to "how much of the frame budget" you spent.
+ */
 #include <debug.h>
 #include <common.h>
 #include <effect.h>

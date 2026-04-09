@@ -1,3 +1,10 @@
+/*
+ * anim — Skeletal mesh animation demo.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <2d.h>
 #include <blitter.h>

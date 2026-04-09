@@ -1,3 +1,10 @@
+/*
+ * blurred3d — 3D scene with motion blur passes.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <3d.h>
 #include <blitter.h>

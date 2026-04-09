@@ -1,3 +1,10 @@
+/*
+ * Register offsets/names for custom chips/CIA (cia_regdef.h). HRM register map.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef __CIA_REGDEF_H__
 #define __CIA_REGDEF_H__
 

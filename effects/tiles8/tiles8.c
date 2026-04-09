@@ -1,3 +1,34 @@
+/*
+ * Tiles8 — 8×8 tiles into a 1bpp screen with **copper chunky** (beam-synchronous palette).
+ *
+ * **Display:** One bitplane holds tile indices packed as nibbles; Denise reads luminance
+ * while the copper fires many `COLOR01` MOVEs per scanline so each 8×8 block can show a
+ * different pen. `DIWHP` / `DIWVP` are overridden (see defines below) so the display
+ * window matches the copper’s timing assumptions — do not change casually.
+ *
+ * **Copper list (`MakeCopperList`):** For each tile row, `CopMove32(cop2lc, …)` jumps the
+ * Copper into a mini-list that reloads `COLOR01` once per 8-pixel column (see existing
+ * comment block on WAIT/SKIP at lines 127/255). `chunky[y]` records the first `CopIns` for
+ * that row’s colour words so the CPU can patch palette data without rebuilding the list.
+ *
+ * **`UpdateChunky` asm:** For each of `HTILES` positions, load a twist-table byte, add
+ * a scrolling offset, scale index by 2 (`addw d0,d0`), and fetch a 16-bit RGB4/12 value
+ * from `colors.pixels` (`cmap`). Writes the **immediate** word of successive `CopIns`
+ * MOVEs. The post-asm `row++` skips the **reg** word of the next instruction so `row`
+ * always points at `move.data` (union layout in `copper.h`).
+ *
+ * **`UpdateTiles`:** 32-bit word adds with `0x00100010` / mask `0x00f000f0` animate two
+ * independent nibble indices per memory word (four tiles’ worth per inner iteration).
+ *
+ * **`RenderTiles` asm:** `custom_` points at `&custom->bltbpt` so the store stream walks
+ * consecutive blitter registers (`bltbpt`, `bltapt`, `bltdpt`, `bltsize`) with fixed
+ * displacements — fewer opcode bytes than repeated C stores. `bltcon0` uses A∧B minterm
+ * path to merge tile nibbles into the chunky buffer. No explicit `WAITBLT` here: the
+ * inner loop is slow enough that the previous blit usually finishes before registers are
+ * rewritten (tight demos often add `WaitBlitter()` if the pattern is changed).
+ *
+ * HRM (Copper, blitter, DIW): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -13,7 +44,9 @@
 #define HTILES (WIDTH / 8)
 #define VTILES (HEIGHT / 8)
 
-/* Don't change these settings without reading a note about copper chunky! */
+/*
+ * Overrides for beampos.h — must stay consistent with the copper WAIT/SKIP layout below.
+ */
 #undef DIWVP
 #define DIWVP 0x28
 #undef DIWHP
@@ -123,6 +156,10 @@ static void UpdateChunky(void) {
       u_char p = *data++ - offset;
       *row++ = getword(cmap, p);
 #else
+      /*
+       * d0 = twist byte + offset; word index into cmap; store colour immediate;
+       * @+ advances `row` past written data word; second `row++` skips next MOVE’s reg.
+       */
       asm volatile("moveq #0,d0\n"
                    "moveb %0@+,d0\n"
                    "addb %3,d0\n"
@@ -137,6 +174,7 @@ static void UpdateChunky(void) {
   }
 }
 
+/* Nibble-crawl animation: two tiles’ indices per 32-bit word, masked to 4 bits each. */
 static void UpdateTiles(void) {
   u_int *_tilescr = (u_int *)tilescr;
   register u_int incr asm("d2") = 0x00100010;
@@ -156,6 +194,7 @@ static void RenderTiles(void) {
   void *_tile = tilegfx.planes[0];
   void *custom_ = (void *)&custom->bltbpt;
 
+  /* Blitter config once per frame; per-tile work is in the asm block. */
   custom->bltamod = 0;
   custom->bltbmod = 0;
   custom->bltcon0 = (SRCA | SRCB | DEST) | (ABC | ANBC | ABNC | NABNC);
@@ -179,6 +218,10 @@ static void RenderTiles(void) {
         custom->bltdpt = dst;
         custom->bltsize = bltsize;
 #else
+        /*
+         * a0 = custom_->bltbpt … bltsize: program two tile indices as B/A, dst word,
+         * then size. Post-increment on _tilescr consumes two u_short indices per tile.
+         */
         asm volatile("movel %0,a0\n"
                      "movel %3,a1\n"
                      "addaw %4@+,a1\n"

@@ -1,3 +1,28 @@
+/*
+ * MagnifyingGlass — “lens” over the logo: UV-distorted resample + 4bpp C2P + 8 sprites.
+ *
+ * **Pipeline:** Each frame, a 64×64 window is cut from the **4bpp chunky** `logo` pixmap
+ * (`CropPixmapBlitter`) into two CHIP buffers (`texture_lo` / `texture_hi`) holding **even
+ * and odd nibbles** of each pixel — the same logical split the JIT sampler expects. The
+ * `uvmap` table (from `ball.c`) defines, per **half-pixel** in the lens, which byte offset
+ * to read from each texture; `MakeUVMapRenderCode` **fills CHIP/RAM with 68000 opcodes**
+ * (`UVMapRender`) so sampling is a tight loop of `move.b`/`or.b`/`move.b` with no
+ * per-pixel dispatch. The result lands in `segment_p` (chunky 4bpp cmap). `ChunkyToPlanar`
+ * converts that pixmap into `segment_bp` using the **back-and-forth blitter C2P** from
+ * `prototype/c2p` (same minterm masks as `c2p_1x1_4bp_blitter_backforth.py`). Finally
+ * `PlanarToSprite` copies four bitplanes into **eight** sprite channels (4×16px columns
+ * × 2 sprites per column) so the 64×64 magnified patch can sit in the sprite pipeline
+ * over the static logo bitplanes.
+ *
+ * **Why sprites:** 64-pixel-wide updates are far wider than the 8 sprite limit per row
+ * alone allows — the code uses **four pairs** of sprites attached side by side (see
+ * `PositionSprite`) to cover the full width. `PlanarToSprite` lays out words into each
+ * sprite’s `SprDataT` the way the DMA engine expects (see HRM sprite data).
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -26,6 +51,7 @@ static __code CopListT *cp;
 #include "data/ball.c"
 #include "data/ball-anim.c"
 
+/* Worst case: ~5 words per half-pixel pair + 1 word RTS (see `MakeUVMapRenderCode`). */
 #define UVMapRenderSize (WIDTH * HEIGHT / 2 * 10 + 2)
 static __code void (*UVMapRender)(u_char *chunky asm("a0"),
                                   u_char *textureHi asm("a1"),
@@ -37,6 +63,12 @@ static void CropPixmapBlitter(
   const PixmapT *input, u_short x0, u_short y0,
   short width, short height, u_char* thi, u_char *tlo);
 
+/*
+ * Build a 68000 subroutine at `UVMapRender`: for each pixel (two half-pixel samples in
+ * `uvmap`), optionally load the low nibble from `textureLo` (a1), OR in the high nibble
+ * from `textureHi` (a2), store one chunky byte to the pixmap (a0)+. Negative `uv` entries
+ * mean “no sample” / clear that nibble contribution (`moveq #0,d0` skips the load).
+ */
 static void MakeUVMapRenderCode(void) {
   u_short *code = (void *)UVMapRender;
   u_short *data = uvmap;
@@ -45,16 +77,16 @@ static void MakeUVMapRenderCode(void) {
 
   while (n--) {
     if ((uv = *data++) >= 0) {
-      *code++ = 0x1029;  /* 1029 xxxx | move.b xxxx(a1),d0 */
+      *code++ = 0x1029;  /* move.b xxxx(a1),d0 */
       *code++ = uv;
     } else {
-      *code++ = 0x7000;  /* 7000      | moveq  #0,d0 */
+      *code++ = 0x7000;  /* moveq #0,d0 */
     }
     if ((uv = *data++) >= 0) {
-      *code++ = 0x802a;  /* 802a yyyy | or.b   yyyy(a2),d0 */
+      *code++ = 0x802a;  /* or.b yyyy(a2),d0 */
       *code++ = uv;
     }
-    *code++ = 0x10c0;    /* 10c0      | move.b d0,(a0)+    */
+    *code++ = 0x10c0;    /* move.b d0,(a0)+ */
   }
 
   *code++ = 0x4e75; /* rts */
@@ -80,13 +112,15 @@ static void UnLoad(void) {
 }
 
 static void Init(void) {
-  // segment_bp and segment_p are bitmap and pixmap for the magnified segment
+  /* Lens output: chunky cmap buffer + planar destination for C2P and sprite extraction. */
   segment_bp = NewBitmap(WIDTH, HEIGHT, S_DEPTH, BM_CLEAR);
   segment_p = NewPixmap(WIDTH, HEIGHT, PM_CMAP4, MEMF_CHIP);
 
+  /* Dual texture planes: same layout as `CropPixmapBlitter` output (nibble-split 4bpp). */
   texture_hi = MemAlloc(WIDTH*HEIGHT, MEMF_CHIP);
   texture_lo = MemAlloc(WIDTH*HEIGHT, MEMF_CHIP);
 
+  /* Eight sprites × 64px wide × 2 planes each (see `PlanarToSprite`). */
   sprdat = MemAlloc(SprDataSize(64, 2) * 8 * 2, MEMF_CHIP | MEMF_CLEAR);
 
   {
@@ -141,7 +175,9 @@ static void Kill(void) {
 #define C2P_LF_PASS2 (NABC | ANBNC | ABNC | ABC)
 
 /*
- * Chunky to Planar conversion using blitter
+ * Chunky → planar (4bpp) via blitter back-and-forth passes (see repo prototype).
+ * After the shuffle stages, intermediate state is still in the chunky buffer; the final
+ * four A→D copies pack bytes into real bitplanes (see trailing comment block).
  */
 static void ChunkyToPlanar(PixmapT *input, BitmapT *output) {
   char *planes = output->planes[0];
@@ -403,6 +439,7 @@ static void ChunkyToPlanar(PixmapT *input, BitmapT *output) {
   }
 }
 
+/* Four columns of 16px: two sprites share the same X for attach/overlay (even/odd pairs). */
 static void PositionSprite(SpriteT *sprite[8], short xo, short yo) {
   short x = xo;
   short n = 4;
@@ -416,6 +453,13 @@ static void PositionSprite(SpriteT *sprite[8], short xo, short yo) {
 }
 
 #define POS4BPP(pixels, iw, x0, y0) ((pixels) + (y0)*(iw)/2 + (x0)/2)
+/*
+ * Extract a WIDTH×HEIGHT 4bpp window from a larger chunky pixmap into two buffers:
+ * `tlo` gets the **even** nybbles, `thi` the **odd** nybbles (masked with `bltcdat`), so
+ * `UVMapRender` can assemble a byte with two independent `move.b`/`or.b` from (a1)/(a2).
+ * **BLITREVERSE** + bottom-right pointers walk the crop so the barrel shifter aligns
+ * arbitrary x0 within a 4-pixel group (same idea as word-aligned C2P crops).
+ */
 static void CropPixmapBlitter(const PixmapT *input, u_short x0, u_short y0,
 			      short width, short height, u_char* thi,	u_char *tlo)
 {
@@ -461,14 +505,13 @@ static void CropPixmapBlitter(const PixmapT *input, u_short x0, u_short y0,
 
 static void PlanarToSprite(const BitmapT *planar, SpriteT *sprites[8]) {
   /*
-   * Copy out planar format into sprites
-   * This function takes care of interlacing SPRxDATA and SPRxDATB registers
-   * inside a SprDataT structure
+   * Copy vertical columns of each bitplane into sprite DMA buffers. Each 16px-wide column
+   * uses two sprites (pair); `bltamod`/`bltdmod` (6/2) step through planar 64px width while
+   * writing interleaved words for SPRxDATA / SPRxDATB (HRM sprite data layout).
    */
   short i;
 
   for (i = 0; i < 4; i++) {
-    // Sprite 0, plane 0
     void *sprdat = sprites[i*2]->data;
     {
       WaitBlitter();
@@ -483,7 +526,7 @@ static void PlanarToSprite(const BitmapT *planar, SpriteT *sprites[8]) {
       custom->bltdpt = sprdat;
       custom->bltsize = BLTSIZE_VAL(1, HEIGHT);
     }
-    //Sprite 0, plane 1
+    /* Plane 1: same column; `bltadat` fills unused minterm path for A→D copy. */
     {
       WaitBlitter();
 
@@ -500,7 +543,6 @@ static void PlanarToSprite(const BitmapT *planar, SpriteT *sprites[8]) {
 
     sprdat = sprites[i*2 + 1]->data;
 
-    // Sprite 1, plane 2
     {
       WaitBlitter();
 
@@ -515,7 +557,6 @@ static void PlanarToSprite(const BitmapT *planar, SpriteT *sprites[8]) {
       custom->bltsize = BLTSIZE_VAL(1, HEIGHT);
     }
 
-    // Sprite 1, plane 3
     {
       WaitBlitter();
 
@@ -544,6 +585,7 @@ static void Render(void) {
     short *frame;
     short pos = frameCount % ball_anim_frames;
     frame = ball_anim[pos];
+    /* Top-left of the 64×64 lens window relative to the logo (animation path). */
     xo = S_WIDTH - *frame++ - WIDTH;
     yo = *frame++;
   }

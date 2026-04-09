@@ -1,3 +1,20 @@
+/*
+ * Crash handler, logging, and optional hex dump (non-UAE, DEBUG>=1).
+ *
+ * Purpose: when an assertion or trap fires, we stop the machine in a controlled
+ * way: log CIA/custom state, show the crash log on a minimal bitplane setup
+ * driven by a tiny copper list in CHIP RAM. That is far more debuggable than
+ * hanging with a black screen.
+ *
+ * Why copper/bitplanes here: the display hardware still works even if the demo
+ * tore down AmigaOS views; programming BPLPT/COLOR via the copper is the
+ * standard OCS way to get *some* pixels without Intuition. See HRM "Copper",
+ * "Display Window and Playfield".
+ *
+ * UAE build uses a shorter path (UaeLog) because the host console is easier.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <config.h>
 #include <common.h>
 #include <custom.h>
@@ -360,6 +377,7 @@ void CrashInit(BootDataT *bd) {
 }
 
 __noreturn void Crash(void) {
+  /* NOTE: possible issue: TODO below — emulator may not flush host stdout before HALT. */
   /* TODO fix emulator to flush stdout before HALT */
   UaeLog("\n");
   HALT();

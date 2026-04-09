@@ -3,6 +3,15 @@
  * (minterms), máscaras. Macros para bltcon0/bltcon1 (ABC, SRCA, ASHIFT, LINE_OR, etc.).
  * WaitBlitter, BlitterStop; wrappers BitmapCopy, BlitterFillArea, BlitterLine, etc.
  */
+/*
+ * English tutorial supplement:
+ * The Amiga Blitter is a DMA-driven coprocessor: while the CPU runs, it can
+ * copy/fill/draw lines using A/B/C/D channels and a programmable minterm (boolean
+ * mix of sources). It is almost always faster than doing the same pixels on the
+ * 68000, and it does not steal as many cycles as a naive CPU loop when set up well.
+ * HRM "Blitter Hardware": https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * Mirror: http://amigadev.elowar.com/read/
+ */
 #ifndef __BLITTER_H__
 #define __BLITTER_H__
 
@@ -10,6 +19,14 @@
 #include <2d.h>
 #include <custom.h>
 
+/*
+ * === BLTCON0 (normal blit) — channel enables and minterms ===
+ * SRCA/SRCB/SRCC/DEST (bits 11–8): enable DMA read for A,B,C and write for D.
+ * Bits 7–0 (ABC…NANBNC): one minterm each; D is OR of enabled products of A,B,C.
+ * C equivalent: for each destination word, compute boolean mix — would be dozens
+ * of loads/stores per word on CPU; blitter does it in DMA time.
+ * ASHIFT/BSHIFT: nibble shift of A/B streams (horizontal alignment of blits).
+ */
 /* definitions for blitter control register 0 */
 #define ABC __BIT(7)
 #define ABNC __BIT(6)
@@ -25,9 +42,16 @@
 #define SRCB __BIT(10)
 #define SRCA __BIT(11)
 
+/* Horizontal nibble shifts: (x & 15) in bits 15–12 of BLTCON0 for A/B. */
 #define ASHIFT(x) (((x) & 15) << 12)
 #define BSHIFT(x) (((x) & 15) << 12)
 
+/*
+ * === BLTCON1 — line mode vs area mode ===
+ * LINEMODE: if set, blitter draws vectors (line mode); else rectangular blit.
+ * FILL_* : polygon edge fill carry modes. BLITREVERSE: DMA backward (overlap safe).
+ * Line mode: SIGNFLAG, SUD/SUL/AUL/ONEDOT control Bresenham line stepping (HRM).
+ */
 /* definitions for blitter control register 1 */
 #define LINEMODE __BIT(0)
 
@@ -45,7 +69,7 @@
 #define AUL __BIT(2)
 #define ONEDOT __BIT(1)
 
-/* some commonly used operations */
+/* Common minterm ORs — ready-made boolean mixes for copy, adders, etc. */
 #define A_AND_B (ABC | ABNC)
 #define A_AND_NOT_B (ANBC | ANBNC)
 #define NOT_A_AND_B (NABC | NABNC)
@@ -84,6 +108,11 @@ static inline bool BlitterBusy(void) {
   return custom->dmaconr & DMAF_BLTDONE;
 }
 
+/*
+ * _WaitBlitter — spin until blitter DMA finished (DMAF_BLTDONE in DMACONR bit 14).
+ * Why asm: tight loop on a chipset register; C while() might reload base each time.
+ * C equivalent: `while (custom->dmaconr & DMAF_BLTDONE);` with volatile semantics.
+ */
 static inline void _WaitBlitter(CustomPtrT custom_) {
   asm("1: btst #6,%0@(2)\n" /* dmaconr */
       "   bnes 1b"

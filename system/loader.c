@@ -1,3 +1,17 @@
+/*
+ * Bare-metal Loader: memory, CPU model, exceptions, interrupts, then main().
+ *
+ * Purpose: after the boot sector (or AmigaOS SaveOS) hands us BootDataT, we
+ * register chip/fast memory regions, install exception and interrupt vectors,
+ * reset CIA timers to a known idle state, enable master DMA/INT, and run
+ * linker-generated init functions before main(). This is the hub between the
+ * platform and the demoscene demo.
+ *
+ * Why own the vectors: demos need deterministic IRQ dispatch (VBlank, disk,
+ * etc.) without AmigaOS remapping handlers underneath us.
+ *
+ * HRM (CIA, DMA, interrupts): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <config.h>
 #include <debug.h>
 #include <system/amigahunk.h>
@@ -10,6 +24,7 @@
 #include <system/memory.h>
 #include <system/task.h>
 
+/* CpuModel/BootDev become global runtime facts used by subsystems/drivers. */
 u_char CpuModel = CPU_68000;
 u_char BootDev;
 
@@ -25,6 +40,12 @@ static void IdleTaskLoop(__unused void *ptr) {
 static __aligned(8) char IdleTaskStack[256];
 static TaskT IdleTask;
 
+/* Loader — platform bring-up entry point called from crt0/boot handoff.
+ * Sequence:
+ * 1) capture crash/boot context, register memory arenas,
+ * 2) install exception + interrupt vectors,
+ * 3) reset CIA and global interrupt/DMA state,
+ * 4) run init list, call main, run exit list. */
 void Loader(BootDataT *bd) {
   CrashInit(bd);
 
@@ -89,6 +110,7 @@ void Loader(BootDataT *bd) {
   SetIPL(IPL_NONE);
 
 #ifdef MULTITASK
+  /* Main task wraps current boot stack, idle task executes STOP/WAIT loop. */
   TaskInit(CurrentTask, "main", bd->bd_stkbot, bd->bd_stksz);
   TaskInit(&IdleTask, "idle", IdleTaskStack, sizeof(IdleTaskStack));
   TaskRun(&IdleTask, 3, IdleTaskLoop, NULL);

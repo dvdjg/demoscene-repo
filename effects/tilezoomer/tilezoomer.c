@@ -1,3 +1,18 @@
+/*
+ * TileZoomer — zoom/rotate a tile grid by **reordering blits** from a large off-screen map.
+ *
+ * `CalculateTiles` precomputes, for each tile index, a **source** byte offset and a
+ * **destination** offset within the display bitmap — implementing discrete rotation
+ * and zoom by remapping which source tile maps to which screen tile (`ROTATION` /
+ * `ZOOM` macros). The render loop uses `BlitterCopyArea` (or variants) to copy
+ * 16×16 tiles each frame; optional **MOTIONBLUR** path uses a single plane plus shadow
+ * buffers (`SHADOW`) for trails (see `DEPTH` / `screen1` ifdef).
+ *
+ * Copper sets **BPLxMOD** to include `MARGIN` so fetch windows align with the padded
+ * bitmap — avoids edge garbage when scaling.
+ *
+ * HRM (Blitter, BPLxMOD): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>

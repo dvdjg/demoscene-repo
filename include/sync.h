@@ -1,10 +1,14 @@
+/*
+ * Track / sync — keyframe timeline (GNU Rocket–style types) for demo scripting.
+ *
+ * Tracks interpolate (frame,value) pairs; demo.c embeds TrackT data for effect order.
+ */
 #ifndef __SYNC_H__
 #define __SYNC_H__
 
 #include "cdefs.h"
 #include "common.h"
 
-/* First four types are based upon their counterparts in GNU rocket! */
 typedef enum {
   TRACK_STEP      = 1, /* set constant value */
   TRACK_LINEAR    = 2, /* lerp to the next value */

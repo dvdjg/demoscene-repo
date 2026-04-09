@@ -1,3 +1,21 @@
+/*
+ * MultiPipe — fake “tunnel” of stripes: precomputed CHIP lines + per-line copper patch.
+ *
+ * `CalcLines` fills `cache[STEP][…]` with horizontal 1bpp patterns for each tunnel
+ * width (sawtooth phase) and sub-pixel phase (`STEP` discrete shifts). At runtime
+ * `RenderPipes` only picks which pre-baked row to show and a BPLCON1 nibble — no
+ * per-pixel blitter on the tunnel itself. `offsets[]` maps each screen line’s stripe
+ * width (`stripes` from stripes.c) to a byte offset inside the cache so the same
+ * pattern templates scale with perspective.
+ *
+ * Two copper lists (`cp[0]`, `cp[1]`) alternate like `textscroll`: patch all
+ * `CopLineT` per frame, `CopListRun`, VBlank, `active ^= 1`. `SetupBitplaneFetch` uses
+ * extra margin (X(-16), WIDTH+16) so BPLCON1 fine shifts do not eat visible pixels.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -41,6 +59,10 @@ static u_short shifts[16] = {
   0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00,
 };
 
+/*
+ * Build once: for each horizontal phase `s`, generate all stripe-width variants
+ * (toggle bit when accumulated phase crosses `w`) plus a solid border line.
+ */
 void CalcLines(void) {
   short s;
 
@@ -166,7 +188,7 @@ static void RenderPipes(void) {
       _c += 1;
     }
 
-    /* Set bitplane line to display */
+    /* Point BPLxPT at the right row inside `cache[phase]` + per-line width table. */
     {
       void *line;
       short off;
@@ -187,10 +209,10 @@ static void RenderPipes(void) {
       CopInsSet32(&lineIns->bplptr0, line);
     }
 
-    /* Shift bitplanes */
+    /* Table lookup avoids minterm math on a 68000 in the inner loop. */
     CopInsSet16(&lineIns->bplshift, getword(shifts, _x & 15));
 
-    /* Stripes colouring */
+    /* Alternate band colours when crossing stripe boundaries (parity of `_c`). */
     {
       short c0 = *pixels++;
       short c1 = *pixels++;

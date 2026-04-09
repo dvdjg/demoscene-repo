@@ -1,3 +1,10 @@
+/*
+ * Minimal libc/runtime piece for bare-metal (string/bzero.S).
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 # This code is covered by BSD license. It was taken from NetBSD
 # common/lib/libc/arch/m68k/string/bzero.S
 

@@ -1,3 +1,16 @@
+/*
+ * Loader effect — progress bar while modules/samples load, with ProTracker audio.
+ *
+ * Purpose: first-screen experience: draws a frame with CpuLine (CPU-drawn lines),
+ * blits the static loader bitmap once, then uses the copper to display bitplanes.
+ * PtInit drives the music (LoaderModule / LoaderSamples from embedded data).
+ *
+ * Why CpuLine + blitter: the border/outline uses fast line drawing; the logo/art
+ * comes from a preconverted bitmap (blitter copy is the standard OCS way to
+ * stamp CHIP RAM). Raster DMA enables the copper-driven display.
+ *
+ * HRM (bitplanes, copper, blitter): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <copper.h>
 #include <blitter.h>
@@ -11,21 +24,38 @@
 
 #include "data/loader.c"
 
+/* Embedded ProTracker replay assets (linked from packed resources). */
 extern u_char LoaderModule[];
 extern u_char LoaderSamples[];
 
+/* Runtime framebuffer (CHIP) shown during loading. */
 static __code BitmapT *screen;
+/* Copper list that points display hardware to `screen` bitplanes. */
 static __code CopListT *cp;
 
+/* Progress bar rectangle in screen-space pixels. */
 #define X1 99
 #define Y1 230
 #define X2 220
 #define Y2 238
 
+/* Loader display mode: 320x256, 3 bitplanes (8 colours). */
 #define WIDTH 320
 #define HEIGHT 256
 #define DEPTH 3
 
+/*
+ * Init — boot audio replay and prepare loader screen.
+ *
+ * Steps:
+ * 1) Install CIA timer interrupt for ProTracker and start module playback.
+ * 2) Allocate bitmap/copper, draw frame border with CpuLine.
+ * 3) Configure playfield + palette, blit static loader artwork.
+ * 4) Activate copper list and enable raster DMA.
+ *
+ * Why this split: expensive static artwork is copied once; per-frame Render only
+ * updates the progress bar, which keeps loader timing stable during I/O.
+ */
 static void Init(void) {
   PtInstallCIA();
   PtInit(LoaderModule, LoaderSamples, 1);
@@ -55,6 +85,12 @@ static void Init(void) {
   EnableDMA(DMAF_RASTER);
 }
 
+/*
+ * Kill — stop display/audio subsystems and free loader resources.
+ *
+ * BlitterStop/CopperStop first prevent hardware DMA from reading freed memory.
+ * CIA replay hook is removed after PtEnd to leave system timers in clean state.
+ */
 static void Kill(void) {
   BlitterStop();
   CopperStop();
@@ -67,14 +103,25 @@ static void Kill(void) {
   DisableDMA(DMAF_AUDIO);
 }
 
+/*
+ * Render — grow progress bar according to frameCount.
+ *
+ * `x` persists across frames (function-static) so only new columns are drawn.
+ * This avoids redrawing the full bar each frame and keeps CPU cost minimal while
+ * assets continue loading in the background.
+ */
 static void Render(void) {
+  /* Current filled width in pixels relative to X1. */
   static __code short x = 0;
+  /* Slow down progression: 1 pixel every 8 frames. */
   short newX = frameCount >> 3;
   if (newX > 121)
     newX = 122;
+  /* Draw only the newly revealed vertical slices. */
   for (; x < newX; x++) {
     CpuLine(X1 + x, Y1, X1 + x, Y2);
   }
 }
 
+/* Loader effect lifecycle: only Init/Kill/Render are needed here. */
 EFFECT(Loader, NULL, NULL, Init, Kill, Render, NULL);

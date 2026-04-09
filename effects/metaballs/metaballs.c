@@ -1,3 +1,18 @@
+/*
+ * MetaBalls — additive composition of three circular kernels into 5 bitplanes.
+ *
+ * Each metaball is the same pre-rendered radial falloff bitmap (`metaball`). The
+ * first is copied on; the next two are merged with `BitmapAddSaturated` so plane
+ * values sum in CHIP (ripple-carry style add — see lib blit). Where the field crosses
+ * palette thresholds, the 5-plane display reads as iso-surfaces of “blob” fusion.
+ *
+ * Side columns (`bgLeft` / `bgRight`) are static art; the central strip is cleared
+ * each frame then redrawn. `carry` is the 2-plane scratch for saturated adds.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <2d.h>
 #include <blitter.h>
@@ -13,6 +28,7 @@
 static BitmapT *screen[2];
 static short active = 0;
 
+/* Double-buffered ball positions [buffer][ball] — only `active` row is written. */
 static Point2D pos[2][3];
 static BitmapT *carry;
 static CopInsPairT *bplptr;
@@ -22,6 +38,7 @@ static CopListT *cp;
 #include "data/metaball-bg-left-1.c"
 #include "data/metaball-bg-right-1.c"
 
+/* Placeholder before first PositionMetaballs (see also frame 0 animation). */
 static void SetInitialPositions(void) {
   short i, j;
 
@@ -70,6 +87,7 @@ static void Kill(void) {
   DeleteBitmap(screen[1]);
 }
 
+/* Erase previous frame’s three SIZE×SIZE stamps (x aligned to 16 for clear area). */
 static void ClearMetaballs(void) {
   Area2D mball = {0, 0, SIZE + 16, SIZE};
   short *val = (short *)pos[active];
@@ -82,6 +100,7 @@ static void ClearMetaballs(void) {
   }
 }
 
+/* Lissajous-style motion for the three balls in the central band. */
 static void PositionMetaballs(void) {
   int t = frameCount * 24;
   short *val = (short *)pos[active];
@@ -95,6 +114,7 @@ static void PositionMetaballs(void) {
   *val++ = (HEIGHT - SIZE) / 2 + normfx(COS(t) * SIZE * 3 / 4);
 }
 
+/* First ball: raw copy; others: add into existing field (metabolic overlap). */
 static void DrawMetaballs(void) {
   short *val = (short *)pos[active];
   int x, y;
@@ -109,7 +129,6 @@ PROFILE(Metaballs);
 static void Render(void) {
   ProfilerStart(Metaballs);
   {
-    // This takes about 100 lines. Could we do better?
     ClearMetaballs();
     PositionMetaballs();
     DrawMetaballs();

@@ -1,6 +1,19 @@
+/*
+ * Graphics helper (libgfx): bitmaps, lines, copper helpers, etc.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <color.h>
 
 /* Based on https://stackoverflow.com/a/14733008 */
+/*
+ * HsvToRgb — convert HSV to Amiga OCS RGB12 (4 bits per gun in u_short).
+ *
+ * h,s,v in author’s scaled units; grays when s==0. Output packs nibbles for COLORxx.
+ * Pure CPU; used for procedural fades and plasma-style palettes.
+ */
 u_short HsvToRgb(short h, short s, short v) {
   short region, remainder, p, q, t;
   u_char r, g, b;

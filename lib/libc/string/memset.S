@@ -1,3 +1,10 @@
+/*
+ * Minimal libc/runtime piece for bare-metal (string/memset.S).
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 # This code is covered by BSD license. It was taken from NetBSD
 # common/lib/libc/arch/m68k/string/memset.S
 
@@ -21,6 +28,12 @@ ENTRY(memset)
         clr.l   d0
         move.b  d2,d0
         move.l  d0,d2
+        /*
+         * Expand one byte into 32-bit pattern:
+         *   d2 = (uint8_t)c;
+         *   d2 |= d2<<8; d2 |= d2<<16;
+         * Result lets move.l write four filled bytes per instruction.
+         */
         lsl.l   #8,d0
         or.l    d0,d2
         lsl.l   #8,d0   
@@ -49,6 +62,12 @@ ENTRY(memset)
         and.l   #31,d1                  /*      len %= 32 */
         subq.l  #1,d0                   /*      set up for dbf */
 .Lbz32loop:
+        /*
+         * Conceptual C:
+         *   for (int i=0; i<8; ++i) *(uint32_t*)dst++ = pattern32;
+         *
+         * Eight-longword unroll minimizes loop-control overhead on m68k.
+         */
         move.l  d2,(a0)+                /*      set 8 long words */
         move.l  d2,(a0)+
         move.l  d2,(a0)+

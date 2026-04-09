@@ -1,3 +1,10 @@
+/*
+ * M680x0 CPU helpers — SR/IPL, stop/wait, interrupt mask.
+ *
+ * CpuWait: `stop #0x2000` — low-power until IRQ (SR must allow it).
+ * SetIPL in kernel/cpu.S — asm; GetIPL reads SR (supervisor on 68010+ for full SR).
+ * C equivalent for IntrDisable: not portable; must touch %sr.
+ */
 #ifndef __SYSTEM_CPU_H__
 #define __SYSTEM_CPU_H__
 

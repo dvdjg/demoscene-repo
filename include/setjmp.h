@@ -1,3 +1,10 @@
+/*
+ * Header: setjmp.h — see includes and call sites in the repo.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef __SETJMP_H__
 #define __SETJMP_H__
 

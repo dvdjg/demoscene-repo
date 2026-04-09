@@ -1,3 +1,17 @@
+/*
+ * Interrupt vector tables, nesting, and Amiga-style server chains.
+ *
+ * Purpose: bridges the low-level asm in intr-entry.S to C handlers. Maintains
+ * IntVec (per-IRQ handler + userdata), optional nesting count, and sorted chains
+ * for PORTS/VERTB/EXTER so multiple drivers can share one IRQ level (similar in
+ * spirit to AmigaOS interrupt servers).
+ *
+ * SetupInterruptVector installs AmigaLvl* stubs into the exception table and
+ * wires the three chains — vertical blank is the common hook for disk, audio
+ * timing, and frame sync.
+ *
+ * HRM (INTENA/INTREQ, interrupt bits): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <config.h>
 #include <debug.h>
 #include <system/cpu.h>
@@ -70,6 +84,8 @@ static IntChainT *GetIntChain(u_int irq) {
   Panic("[Intr] No interrupt chain %d!", irq);
 }
 
+/* AddIntServer — insert handler in priority order (lower prio value first in list
+ * according to existing comparison) and enable hardware source when first server appears. */
 void AddIntServer(u_int irq, IntServerT *is) {
   IntChainT *ic = GetIntChain(irq);
   IntServerT **is_p;
@@ -87,6 +103,7 @@ void AddIntServer(u_int irq, IntServerT *is) {
   IntrEnable();
 }
 
+/* RemIntServer — remove from chain and disable source if chain becomes empty. */
 void RemIntServer(u_int irq, IntServerT *is) {
   IntChainT *ic = GetIntChain(irq);
   IntServerT **is_p;

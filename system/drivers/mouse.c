@@ -1,3 +1,15 @@
+/*
+ * Amiga mouse via JOY0DAT quadrature counters.
+ *
+ * Purpose: hardware increments/decrements per mickey movement; we integrate into
+ * screen coordinates and clamp to a window. Buttons come from POTGO/cia paths
+ * depending on the specific wiring.
+ *
+ * Why JOY0DAT: OCS reads relative motion without CPU polling a serial stream —
+ * the counters are updated by the hardware between reads.
+ *
+ * HRM (JOY0DAT, gameport): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <custom.h>
 #include <debug.h>
 #include <types.h>
@@ -9,9 +21,12 @@
 typedef struct {
   MouseEventT event;
 
+  /* Last sampled hardware counters from JOY0DAT (x low byte, y high byte). */
   char xctr, yctr;
+  /* Current latched button bitset. */
   u_char button;
 
+  /* Movement clamp window in screen coordinates. */
   short left;
   short right;
   short top;
@@ -20,6 +35,8 @@ typedef struct {
 
 static MouseDataT MouseData;
 
+/* GetMouseMove — read relative deltas from JOY0DAT quadrature counters, clamp,
+ * and update event absolute/relative fields. Returns true when movement occurred. */
 static bool GetMouseMove(MouseDataT *mouse) {
   u_short joy0dat = custom->joy0dat;
   char xctr, xrel, yctr, yrel;
@@ -104,6 +121,8 @@ static void MouseIntHandler(void *data) {
 
 INTSERVER(MouseServer, -5, (IntFuncT)MouseIntHandler, (void *)&MouseData);
 
+/* MouseInit — initialize bounds/counters and hook VBlank polling server.
+ * VBlank cadence is enough for UI input and keeps implementation simple. */
 void MouseInit(Box2D *win) {
   Log("[Mouse] Initialize driver!\n");
 

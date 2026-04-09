@@ -1,3 +1,23 @@
+/*
+ * Credits — vertical copper “bands”: disco, dual-playfield floor + dance layer, optional logo strip.
+ *
+ * Each horizontal slice toggles raster DMA (`dmacon`) only while Denise needs that slice’s
+ * bitplanes, so palettes and fetch windows can differ without one band corrupting the next.
+ * The middle band uses MODE_DUALPF with `BPLCON2_PF2PRI` so playfield 2 (dance sprites
+ * blitted into `foreground`) sorts correctly against the floor (`floor` PF1).
+ *
+ * `CopSetupBitplaneFetch` is per-band: graphics are narrower than 320px and horizontally
+ * centered (`FLOOR_X`, `DISCO_X`). Assets reserve 16px empty margin left/right so the data
+ * fetcher does not wrap garbage when the window is tight to the DIW edge (HRM fetch timing).
+ *
+ * `cp[0]` / `cp[1]` + `CopListRun` + VBlank: the list is rebuilt when `lower` / scroll
+ * position changes so `CopSetupBitplaneArea` and colour loads stay consistent with the
+ * clipped bitmap window.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include "effect.h"
 #include "copper.h"
 #include "gfx.h"
@@ -16,9 +36,11 @@ static Point2D lower_pos;
 static Area2D lower_area;
 static short active = 0;
 
-/* 'credits_logo' and 'txt_*' must have empty 16 pixels on the left and on the
- * right. Otherwise Display Data Fetcher will show some artifact when image
- * crosses edge of the screen. */
+/*
+ * Asset constraint: 16px clear margin on left/right of `credits_logo` and `txt_*`.
+ * Without it, DDFSTRT/DDFSTOP-relative fetches can pick up stray words when the
+ * bitplane window sits near the screen edge.
+ */
 
 #include "data/01_cahir.c"
 #include "data/02_slayer.c"
@@ -58,7 +80,7 @@ static void MakeCopperList(CopListT *cp) {
   CopSetupDisplayWindow(cp, MODE_LORES, X(0), Y(0), 320, 256); 
   CopMove16(cp, dmacon, DMAF_RASTER);
 
-  /* Display disco ball. */
+  /* Band 1: disco — load palette/mode/fetch before raster DMA on for that strip only. */
   CopWaitSafe(cp, Y(DISCO_Y - 1), HP(0));
   CopLoadColors(cp, disco_colors, 0);
   CopSetupMode(cp, MODE_LORES, disco.depth);
@@ -70,7 +92,7 @@ static void MakeCopperList(CopListT *cp) {
   CopWaitSafe(cp, Y(DISCO_Y + disco.height - 1), LASTHP);
   CopMove16(cp, dmacon, DMAF_RASTER);
 
-  /* Display logo & credits. */
+  /* Band 2: floor + dual-PF dance bitmap (interleaved bplpt from `floor` + `foreground`). */
   CopWaitSafe(cp, Y(FLOOR_Y - 1), HP(0));
   CopLoadColors(cp, floor_colors, 0);
   CopLoadColors(cp, dance_colors, 8);
@@ -97,12 +119,12 @@ static void MakeCopperList(CopListT *cp) {
   CopWaitSafe(cp, Y(FLOOR_Y + floor.height), LASTHP);
   CopMove16(cp, dmacon, DMAF_RASTER);
 
-  /* Display logo and textual credits. */
+  /* Band 3: optional lower third — palette + area fetch; WAIT X tuned for ECS vs OCS DIW. */
   if (lower) {
-    /* There're some differences between OCS and ECS that make an artifact
-     * visible (on ECS) while 'lower' bitmap is on the left side of the screen.
-     * I found 'X(56)' to be the least working horizontal position,
-     * but I cannot provide any sound explanation why is it so? */
+    /*
+     * ECS timing can show edge garbage when this strip is too far left; X(56) was
+     * found empirically as a stable wait (exact copper/DIW interaction varies by chipset).
+     */
     CopWaitSafe(cp, Y(LOGO_Y - 1), X(56));
     CopLoadColorArray(cp, lower_pal, logo_colors_count, 0);
     CopSetupMode(cp, MODE_LORES, lower->depth);

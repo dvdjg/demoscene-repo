@@ -1,3 +1,13 @@
+/*
+ * Plasma — Copper chunky: one COLOR change per 8×4 tile via COP2 / chunky buffer.
+ *
+ * CPU fills sin/cos tables and chunky buffer; copper paints pseudo-plasma at beam speed.
+ * DIWHP/DIWVP overrides align copper WAIT quirks (see MakeCopperList). Uses copjmp2 path
+ * described in body comments.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -12,22 +22,32 @@
 #define HTILES (WIDTH / 8)
 #define VTILES (HEIGHT / 4)
 
-/* Don't change these settings without reading a note about copper chunky! */
+/*
+ * Override beampos DIW so CopWait/CopSkip line math matches the copjmp2 / 8×4 tile
+ * layout (see MakeCopperList comment block — copper chunky constraints).
+ */
 #undef DIWVP
 #define DIWVP 0x2c
 #undef DIWHP
 #define DIWHP 0x88
 
+/* chunky[bank][row] points to COLOR0 MOVE instruction for each 8x4 tile row. */
 static CopInsT *chunky[2][VTILES];
+/* Double-buffered copper lists (one displayed, one being updated). */
 static CopListT *cp[2];
+/* Active copper bank toggled each frame. */
 static int active = 0;
 
 #include "data/plasma-colors.c"
 
+/* Precomputed sinusoidal tables used as cheap plasma basis functions. */
 static char tab1[256], tab2[256], tab3[256];
+/* Time/phase accumulators for X/Y components. */
 static u_char a0, a1, a2, a3, a4;
+/* Per-frame intermediate sums for each tile column/row. */
 static u_char xbuf[HTILES], ybuf[VTILES];
 
+/* GeneratePlasmaTables — one-time LUT generation in fixed-point domain. */
 static void GeneratePlasmaTables(void) {
   short i;
 
@@ -42,6 +62,7 @@ static void GeneratePlasmaTables(void) {
 }
 
 static void Load(void) {
+  /* Effect precompute stage; no CHIP allocations here. */
   GeneratePlasmaTables();
 }
 
@@ -84,6 +105,7 @@ static CopListT *MakeCopperList(CopInsT **row) {
 }
 
 static void Init(void) {
+  /* Build both copper buffers before first frame to avoid runtime allocation hitches. */
   cp[0] = MakeCopperList(chunky[0]);
   cp[1] = MakeCopperList(chunky[1]);
 
@@ -97,6 +119,7 @@ static void Kill(void) {
   DeleteCopList(cp[1]);
 }
 
+/* UpdateXBUF — evaluate X-dependent plasma term for each 8-pixel tile column. */
 static void UpdateXBUF(void) {
   u_char _a0 = a0;
   u_char _a1 = a1;
@@ -110,6 +133,7 @@ static void UpdateXBUF(void) {
   } while (--n >= 0);
 }
 
+/* UpdateYBUF — evaluate Y-dependent plasma term for each 4-line tile row. */
 static void UpdateYBUF(void) {
   u_char _a3 = a3;
   u_char _a4 = a4;
@@ -133,12 +157,14 @@ static void UpdateChunky(void) {
 
   a0 += 1; a1 += 3; a2 += 2; a3 += 1; a4 -= 1;
 
+  /* Fill COLOR0 words in the inactive copper list from xbuf+ybuf sums. */
   for (y = 0; y < VTILES; y++) {
     short *ins = &chunky[active][y]->move.data;
 
     short x = HTILES - 1;
     do {
 #if OPTIMIZED
+      /* Inline asm variant avoids extra loads/stores in inner loop. */
       asm volatile("moveq #0,d0\n"
                    "moveb %1@(%2:w),d0\n"
                    "addb  %3@(%4:w),d0\n"
@@ -149,6 +175,7 @@ static void UpdateChunky(void) {
                    : "a" (xbuf), "d" (x), "a" (ybuf), "d" (y), "a" (cmap)
                    : "d0");
 #else
+      /* Straight C equivalent of inner loop (slower on 68000). */
       u_char v = xbuf[x] + ybuf[y];
       *ins++ = cmap[v];
       ins++;
@@ -166,6 +193,7 @@ static void Render(void) {
   }
   ProfilerStop(RenderPlasma);
 
+  /* Run newly prepared copper list during this frame. */
   CopListRun(cp[active]);
   TaskWaitVBlank();
   active ^= 1;

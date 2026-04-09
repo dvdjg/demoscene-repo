@@ -1,3 +1,11 @@
+/*
+ * Custom chip register helpers (DMA, mouse buttons, AGA detect, mirrors).
+ *
+ * English tutorial: `custom` is the volatile view of the OCS/ECS chipset registers.
+ * DMA and interrupt enables are write-only with SET/CLR bits — helpers here keep
+ * the idiom safe. See HRM register map for addresses.
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #ifndef __CUSTOM_H__
 #define __CUSTOM_H__
 

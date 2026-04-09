@@ -1,3 +1,10 @@
+/*
+ * cathedral — Interior cathedral lighting and architecture.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include "bitmap.h"
 #include "custom.h"
 #include "effect.h"

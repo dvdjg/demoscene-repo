@@ -1,3 +1,9 @@
+/*
+ * Basic 2D geometry types (points, lines, boxes) shared by gfx code.
+ *
+ * English tutorial: these are CPU-side structures; actual pixels live in
+ * BitmapT/pixmaps and are fed to the blitter/copper separately.
+ */
 #ifndef __GFX_H__
 #define __GFX_H__
 

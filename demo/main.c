@@ -1,3 +1,12 @@
+/*
+ * Demo main: loads optional per-effect executables (hunks), runs the timeline in demo.c.
+ *
+ * Purpose: orchestrates disk/memfile loading, memory stats, and launching packed
+ * effect binaries — the "shell" of the production. Includes demo.c for TrackT
+ * tables and effect ordering.
+ *
+ * RKM/HRM refs: include/tutorial-refs.h
+ */
 #include <custom.h>
 #include <effect.h>
 #include <color.h>
@@ -30,12 +39,17 @@ static void ShowMemStats(void) {
       chip_total, fast_largest, fast_total);
 }
 
+/* IDs for optional external effect executables loaded as hunks. */
 #define EXE_LOADER 0
 #define EXE_SPOOKYTREE 1
 #define EXE_DARKROOM 2
 #define EXE_PROTRACKER 13
 #define EXE_LAST 14
 
+/* ExeFileT — runtime bookkeeping for one external effect executable.
+ * path: filename on disk.
+ * hunk: loaded memory image chain.
+ * effect: EffectT descriptor found by EFFECT_MAGIC scan in code hunk. */
 typedef struct ExeFile {
   const char *path;
   HunkT *hunk;
@@ -51,6 +65,8 @@ static __code ExeFileT ExeFile[EXE_LAST] = {
   EXEFILE(EXE_PROTRACKER, "playpt.exe"),
 };
 
+/* LoadExe — load hunk from file, locate embedded EffectT footer, call EffectLoad.
+ * The scan walks backward near code end looking for EFFECT_MAGIC marker. */
 static EffectT *LoadExe(int num) {
   ExeFileT *exe = &ExeFile[num];
   FileT *file;
@@ -97,8 +113,10 @@ static void UnLoadExe(int num) {
   exe->hunk = NULL;
 }
 
+/* Per-frame callback used by VBlank interrupt server (set to active effect handler). */
 static volatile EffectFuncT VBlankHandler = NULL;
 
+/* VBlankISR — lightweight relay to current effect's optional VBlank() hook. */
 static int VBlankISR(void) {
   if (VBlankHandler)
     VBlankHandler();
@@ -107,6 +125,10 @@ static int VBlankISR(void) {
 
 INTSERVER(VBlankInterrupt, 0, (IntFuncT)VBlankISR, NULL);
 
+/* Background loader task state machine:
+ * BG_IDLE: sleeping/no action,
+ * BG_INIT: preload key effects before demo starts,
+ * BG_DEMO: execute load/unload commands from EffectLoader track. */
 typedef enum {
   BG_IDLE = 0,
   BG_INIT = 1,
@@ -132,6 +154,7 @@ static void BgTaskLoop(__unused void *ptr) {
 
       case BG_DEMO:
         {
+          /* Track command protocol: +N load effect N, -N unload effect N, 0 no-op. */
           short cmd = TrackValueGet(&EffectLoader, ReadFrameCounter());
           if (cmd == 0)
             continue;
@@ -161,6 +184,7 @@ static void BgTaskLoop(__unused void *ptr) {
 static __aligned(8) char BgTaskStack[768];
 static TaskT BgTask;
 
+/* RunLoader — run dedicated loader effect while background task preloads assets. */
 static void RunLoader(void) {
   EffectT *Loader = LoadExe(EXE_LOADER);
 
@@ -237,7 +261,7 @@ int main(void) {
   ResetSprites();
   AddIntServer(INTB_VERTB, VBlankInterrupt);
 
-  /* Background thread may use tracks as well. */
+  /* Background thread may read tracks, so initialize them before TaskRun. */
   TrackInit(&EffectNumber);
   TrackInit(&EffectLoader);
 

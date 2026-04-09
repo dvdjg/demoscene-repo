@@ -4,6 +4,10 @@ import asyncio
 import logging
 
 
+class GdbDisconnect(Exception):
+    """El cliente GDB cerró la conexión o el flujo RSP quedó fuera de sincronía."""
+
+
 memory_map_xml = """<?xml version="1.0"?>
 <!DOCTYPE memory-map PUBLIC "+//IDN gnu.org//DTD GDB Memory Map V1.0//EN"
  "http://sourceware.org/gdb/gdb-memory-map.dtd">
@@ -22,12 +26,20 @@ class GdbConnection():
         return sum(ord(c) for c in packet) & 255
 
     async def recv_ack(self):
-        # read a character
-        data = await self.reader.read(1)
+        try:
+            data = await self.reader.read(1)
+        except (ConnectionResetError, BrokenPipeError, OSError) as err:
+            logging.debug("(gdb) recv_ack: %s", err)
+            raise GdbDisconnect(str(err))
+
         logging.debug("(gdb) <- {}".format(data))
 
-        # fail if not acknowledge and not retransmission marker
+        if not data:
+            raise GdbDisconnect('eof')
+        # Al cerrar el depurador, a veces llega '$' (inicio de paquete) o basura en lugar de +/-
         if data not in [b'+', b'-']:
+            if data == b'$':
+                raise GdbDisconnect('client closed mid-protocol')
             raise ValueError(data)
 
         return data == b'+'
@@ -35,6 +47,8 @@ class GdbConnection():
     async def recv_break(self):
         data = await self.reader.read(1)
         logging.debug("(gdb) <- {}".format(data))
+        if not data:
+            raise GdbDisconnect('eof in recv_break')
         assert data == b'\x03'
 
     async def recv_packet(self):
@@ -310,54 +324,58 @@ class GdbStub():
         return True
 
     async def run(self):
-        assert await self.gdb.recv_ack()
-        stopdata = await self.uae.prologue()
+        try:
+            assert await self.gdb.recv_ack()
+            stopdata = await self.uae.prologue()
 
-        running = True
+            running = True
 
-        while running:
-            interactive = True
+            while running:
+                interactive = True
 
-            while interactive:
-                packet = await self.gdb.recv_packet()
-                if not packet:
-                    return
+                while interactive:
+                    packet = await self.gdb.recv_packet()
+                    if not packet:
+                        raise GdbDisconnect('eof')
 
-                interactive = await self.handle_packet(packet)
-                if interactive:
-                    assert await self.gdb.recv_ack()
+                    interactive = await self.handle_packet(packet)
+                    if interactive:
+                        assert await self.gdb.recv_ack()
 
-            uae_stop = asyncio.create_task(self.uae.prologue())
-            gdb_wait = asyncio.create_task(self.gdb.recv_break())
+                uae_stop = asyncio.create_task(self.uae.prologue())
+                gdb_wait = asyncio.create_task(self.gdb.recv_break())
 
-            done, pending = await asyncio.wait(
-                    {uae_stop, gdb_wait}, return_when=asyncio.FIRST_COMPLETED)
+                done, pending = await asyncio.wait(
+                        {uae_stop, gdb_wait}, return_when=asyncio.FIRST_COMPLETED)
 
-            if uae_stop in done:
-                logging.debug('FS-UAE stopped!')
-                gdb_wait.cancel()
-                try:
-                    await gdb_wait
-                except asyncio.CancelledError:
-                    pass
-                stopdata = uae_stop.result()
-            else:
-                logging.debug('GDB sent break message!')
-                self.uae.interrupt()
-                stopdata = await uae_stop
-                if False:
-                    uae_stop.cancel()
+                if uae_stop in done:
+                    logging.debug('FS-UAE stopped!')
+                    gdb_wait.cancel()
                     try:
-                        stopdata = await uae_stop
+                        await gdb_wait
                     except asyncio.CancelledError:
-                        self.uae.interrupt()
-                        stopdata = await self.uae.prologue()
+                        pass
+                    stopdata = uae_stop.result()
+                else:
+                    logging.debug('GDB sent break message!')
+                    self.uae.interrupt()
+                    stopdata = await uae_stop
+                    if False:
+                        uae_stop.cancel()
+                        try:
+                            stopdata = await uae_stop
+                        except asyncio.CancelledError:
+                            self.uae.interrupt()
+                            stopdata = await self.uae.prologue()
 
-            # Process stop information.
-            regs = stopdata['regs']
-            dump = ';'.join('{:x}:{}'.format(num, regs.as_hex(name))
-                            for num, name in enumerate(self.__regs__))
-            if 'watch' in stopdata:
-                dump += ';watch:%x' % stopdata['watch']
-            self.gdb.send('T05{};'.format(dump))
-            await self.gdb.recv_ack()
+                # Process stop information.
+                regs = stopdata['regs']
+                dump = ';'.join('{:x}:{}'.format(num, regs.as_hex(name))
+                                for num, name in enumerate(self.__regs__))
+                if 'watch' in stopdata:
+                    dump += ';watch:%x' % stopdata['watch']
+                self.gdb.send('T05{};'.format(dump))
+                await self.gdb.recv_ack()
+        except GdbDisconnect:
+            logging.info('gdb remote disconnected')
+            raise

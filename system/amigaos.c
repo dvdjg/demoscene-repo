@@ -1,3 +1,28 @@
+/*
+ * AmigaOS "friendly" takeover: save and restore OS state around the demo Loader.
+ *
+ * Purpose: when the executable is launched from Workbench/CLI, we must stop
+ * multitasking, silence DMA/interrupts we care about, own the blitter, stash
+ * CIA timer state, and optionally read the VBR on 68010+ before installing our
+ * own vectors. RestoreOS unwinds that in reverse so the machine returns to a
+ * usable desktop.
+ *
+ * Why not stay under Exec for the demo: full-screen copper lists, blitter, and
+ * IRQ routing need predictable hardware state; Exec's device drivers and
+ * vertical blank servers would fight the framework. We snapshot and restore
+ * instead of rebooting.
+ *
+ * Inline assembly: GetTimerState/SetTimerState use explicit register operands
+ * and bset/bclr on CIA registers — timing-sensitive sequences are clearer and
+ * match known-good save/restore patterns (see also jotd's work referenced in
+ * code). `movec vbr` is only legal on 68010+; C cannot express register names
+ * as cleanly as one asm line.
+ *
+ * `WaitVBlank` polls VPOSR (beam position); HRM documents raster position read.
+ *
+ * RKM (Exec, libraries): https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM (custom chips, DMA, interrupts): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #define __cplusplus
 #include <exec/types.h>
 #undef __cplusplus
@@ -28,7 +53,7 @@
 #include <string.h>
 #include <strings.h>
 
-/* Use _custom definition provided by the linker. */
+/* Use _custom definition provided by the linker (mapped custom-chip registers). */
 extern struct Custom volatile _custom;
 #define custom (&_custom)
 
@@ -36,6 +61,8 @@ extern struct Custom volatile _custom;
 extern struct ExecBase *__CONSTLIBBASEDECL__ SysBase;
 static struct GfxBase *__CONSTLIBBASEDECL__ GfxBase;
 
+/* WaitVBlank — busy-wait until scanline ~303 to synchronize disruptive register writes.
+ * C equivalent is this polling loop itself; no interrupt dependency while taking over. */
 static void WaitVBlank(void) {
   const uint32_t line = 303;
   volatile uint32_t *vposr = (u_int *)&custom->vposr;
@@ -49,8 +76,10 @@ typedef struct TimerState {
   u_char llo, lhi; /* latch values */
 } TimerStateT;
 
+/* Generic volatile pointer type for CIA byte registers. */
 typedef volatile u_char *CiaRegT;
 
+/* One-cycle fence between CIA bit operations (matches known hardware-safe sequences). */
 static inline void nop(void) {
   asm volatile("nop;" ::: "memory");
 }
@@ -65,7 +94,8 @@ static inline void bset(CiaRegT reg, char bit) {
   nop();
 }
 
-/* Based on jst_cus.asm from https://github.com/jotd666/jst */
+/* GetTimerState — snapshot one CIA timer register set (control + current + latch).
+ * Based on jst_cus.asm from https://github.com/jotd666/jst */
 static void GetTimerState(CiaRegT cr asm("a0"), CiaRegT tlo asm("a1"),
                           CiaRegT thi asm("a2"), TimerStateT *ts asm("a3"))
 {
@@ -84,6 +114,7 @@ static void GetTimerState(CiaRegT cr asm("a0"), CiaRegT tlo asm("a1"),
   ts->lhi = *thi;
 }
 
+/* SetTimerState — restore one CIA timer set saved by GetTimerState. */
 static void SetTimerState(CiaRegT cr asm("a0"), CiaRegT tlo asm("a1"),
                           CiaRegT thi asm("a2"), TimerStateT *ts asm("a3"))
 {
@@ -143,7 +174,7 @@ static BootDataT BootData = {
   }
 };
 
-/* Some shortcut macros. */
+/* Exec library version shortcut (Kickstart compatibility branches). */
 #define ExecVer (SysBase->LibNode.lib_Version)
 
 /* Linker exported symbols (see amiga.ld linker script). */
@@ -152,18 +183,22 @@ extern char _bss_size[];
 extern char _bss_chip[];
 extern char _bss_chip_size[];
 
+/* SaveOS — transition from AmigaOS-managed runtime to demo-owned hardware state.
+ * Returns BootData pointer consumed by the framework loader/main entry. */
 BootDataT *SaveOS(void) {
   BootDataT *bd = &BootData;
 
   Log("[Startup] Save AmigaOS state.\n");
 
   /* KS 1.3 and earlier are brain-dead since they don't clear BSS sections :( */
+  /* NOTE: possible issue: BSS clear on old Kickstart relies on linker symbols; if
+   * layout changes, verify _bss/_bss_chip ranges still match the executable image. */
   if (ExecVer <= 34) {
     bzero(_bss, (size_t)_bss_size);
     bzero(_bss_chip, (size_t)_bss_chip_size);
   }
 
-  /* Workaround for const-ness of GfxBase declaration. */
+  /* Workaround for const-ness of GfxBase declaration (legacy NDK headers). */
   *(struct GfxBase **)&GfxBase =
     (struct GfxBase *)OpenLibrary("graphics.library", 33);
 
@@ -232,8 +267,7 @@ BootDataT *SaveOS(void) {
     bd->bd_stksz = self->tc_SPUpper - self->tc_SPLower;
   }
 
-  /* Enter supervisor mode and save exception vector
-   * since the framework takes full control over it. */
+  /* Enter supervisor mode and save exception vector since framework owns vectors. */
   old.sysStack = SuperState();
 
   /* Detect CPU model and fetch VBR on 68010 and later. */
@@ -267,6 +301,7 @@ BootDataT *SaveOS(void) {
 
 extern void UserState34(void *stack);
 
+/* RestoreOS — reverse SaveOS: restore vectors, CIA/DMA/view/cache/tasking/blitter. */
 void RestoreOS(void) {
   BootDataT *bd = &BootData;
 

@@ -1,3 +1,11 @@
+/*
+ * PlayP61 — ProTracker P61 replayer (p61.h) with 4-channel oscilloscope bitmaps.
+ *
+ * Embedded `sunglasses_at_night` module; `p61tmr` synchronizes replay. `putpixel` draws
+ * into 1bpp osc buffers per voice; font from `drdos8x8`. Classic demo “music disk” shell.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <console.h>

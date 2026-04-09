@@ -1,3 +1,16 @@
+/*
+ * AmigaHunk executable loader: relocatable segments, optional LZSA/zx0 packing.
+ *
+ * Purpose: read classic AmigaDOS-style hunk streams from a FileT, allocate
+ * CHIP/FAST memory per hunk flags, apply HUNK_RELOC32 fixups, and optionally
+ * decompress packed segments. Shared hunks let multiple effects reuse the same
+ * resident data.
+ *
+ * Why in the demo tree: trackloaded demos often pack effect binaries as hunks;
+ * this avoids duplicating OS loader logic while staying self-contained.
+ *
+ * RKM (object/hunk overview in AmigaDOS context): https://archive.org/details/amiga-rom-kernel-reference-manual
+ */
 #include <debug.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +23,7 @@
 #include <system/file.h>
 #include <system/memory.h>
 
+/* AmigaDOS hunk record IDs (stored as 32-bit tags in stream). */
 #define HUNK_CODE 1001
 #define HUNK_DATA 1002
 #define HUNK_BSS 1003
@@ -19,32 +33,41 @@
 #define HUNK_END 1010
 #define HUNK_HEADER 1011
 
+/* Non-standard high-bit flags in size field: desired memory class. */
 #define HUNKF_CHIP __BIT(30)
 #define HUNKF_FAST __BIT(31)
 
+/* packexe compression markers stored in bits 28..29 of hunk size word. */
 #define COMP_NONE (0 * __BIT(28))
 #define COMP_LZSA (1 * __BIT(28))
 #define COMP_ZX0 (3 * __BIT(28))
 #define COMP_MASK (__BIT(29) | __BIT(28))
 
+/* Masks to separate allocator flags/compression bits from true longword count. */
 #define FLAG_MASK (HUNKF_CHIP | HUNKF_FAST)
 #define SIZE_MASK (~(COMP_MASK | FLAG_MASK))
 
+/* Optional resident/shared hunks appended to each loaded list.
+ * Used by trackmo runtime to keep common code/data loaded once. */
 static struct {
   int count;
   HunkT **array;
 } SharedHunks = { 0, NULL };
 
+/* ReadLong — hunk files are longword-oriented; helper keeps parser compact. */
 static long ReadLong(FileT *fh) {
   long v = 0;
   FileRead(fh, &v, sizeof(v));
   return v;
 }
 
+/* SkipLongs — skip `n` longwords (metadata blocks we do not need at runtime). */
 static void SkipLongs(FileT *fh, int n) {
   FileSeek(fh, n * sizeof(int), SEEK_CUR);
 }
 
+/* AllocHunks — allocate all root hunks declared in header and chain with `next`.
+ * Allocation class follows HUNKF_CHIP/HUNKF_FAST flags from the size descriptor. */
 static bool AllocHunks(FileT *fh, HunkT **hunkArray, short hunkCount) {
   HunkT *prev = NULL;
 
@@ -52,6 +75,9 @@ static bool AllocHunks(FileT *fh, HunkT **hunkArray, short hunkCount) {
     /* size specifiers including memory attribute flags */
     uint32_t n = ReadLong(fh);
 
+    /* NOTE: possible issue: `n` still contains high flag/compression bits here.
+     * If input contains these bits, allocation size may be incorrect unless the
+     * format guarantees they are clear in this header section. */
     HunkT *hunk = MemAlloc(sizeof(HunkT) + n * sizeof(int),
                            (n & HUNKF_CHIP) ? MEMF_CHIP : MEMF_PUBLIC);
     *hunkArray++ = hunk;
@@ -72,6 +98,8 @@ static bool AllocHunks(FileT *fh, HunkT **hunkArray, short hunkCount) {
   return true;
 }
 
+/* LoadHunks — parse per-hunk records (CODE/DATA/BSS/RELOC/SYMBOL/DEBUG/END).
+ * Applies relocations in-place, and decompresses packed payloads when tagged. */
 static bool LoadHunks(FileT *fh, HunkT **hunkArray) {
   int hunkIndex = 0;
   HunkT *hunk = hunkArray[hunkIndex++];
@@ -149,6 +177,8 @@ static bool LoadHunks(FileT *fh, HunkT **hunkArray) {
   return true;
 }
 
+/* LoadHunkList — top-level parser entry: validate header, allocate, then load.
+ * Returns linked list head or NULL on parse/alloc failure. */
 HunkT *LoadHunkList(FileT *fh) {
   short hunkId = ReadLong(fh);
   int n, first, last, hunkCount;
@@ -189,6 +219,7 @@ HunkT *LoadHunkList(FileT *fh) {
   return NULL;
 }
 
+/* FreeHunkList — release linked hunks in order. */
 void FreeHunkList(HunkT *hunk) {
   do {
     HunkT *next = hunk->next;
@@ -197,6 +228,8 @@ void FreeHunkList(HunkT *hunk) {
   } while (hunk);
 }
 
+/* SetupSharedHunks — snapshot a hunk chain into SharedHunks table so future
+ * LoadHunkList calls can append these references without reloading from disk. */
 void SetupSharedHunks(HunkT *hunk) {
   HunkT **array;
   HunkT *h;

@@ -1,3 +1,30 @@
+/*
+ * Tiles16 — MagicLand-style 16×16 tile map, 5 bitplanes, copper fine scroll + dirty tiles.
+ *
+ * **Map encoding (`Load`):** Each cell is shifted left by 2 and OR’d with `3` so the low
+ * two bits are **dirty flags** (one per hidden screen buffer). `TriggerRefresh` ORs `3`
+ * on visible cells to request a redraw. At runtime `UpdateTiles` uses `current = active + 1`
+ * (values `1` or `2`) so `tile & current` selects work queued for the buffer about to be
+ * shown; after the blit, `map[-1] ^= current` clears those bits (no full-map refresh).
+ *
+ * **Interleaved blits (`BM_INTERLEAVED`):** Tile graphics are contiguous in CHIP; the
+ * destination is interleaved (`BitmapSetPointers` in libgfx). One A→D copy with
+ * `bltsize = ((TILEH * DEPTH) << 6) | 1` stamps all five planes in a single blitter pass
+ * (height counts plane “slices” — fewer separate `bltsize` writes than planar mode).
+ * `bltdmod` skips from the end of one 16×16 column to the start of the next within the
+ * wide bitmap; the vertical step `BPLMOD + 15 * WIDTH * DEPTH / 8` advances to the next
+ * row of tiles (see HRM blitter modulo for interleaved playfields).
+ *
+ * **`WAITBLT`:** Busy-waits on DMACONR bit 6 (BBUSY). Required before touching blitter
+ * registers or starting the next tile — the 68000 does not stall on blitter completion.
+ *
+ * **Display:** `SetupDisplayWindow` is one tile smaller than the bitmap so the map can
+ * scroll; `CopInsSet32` adds `x << 1` to BPLxPT (word-aligned coarse scroll) and
+ * `bplcon1` supplies 4+4 pixel nibble fine scroll. Double copper + double screen: patch
+ * active list, `CopListRun`, VBlank, `active ^= 1`.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -45,6 +72,7 @@ static void Load(void) {
   {
     int i;
     for (i = 0; i < tilemap_width * tilemap_height; i++) {
+      /* Pack tile index in high bits; mark both dirty bits so first frames fill the map. */
       tilemap[i] <<= 2;
       tilemap[i] |= 3;
     }
@@ -59,12 +87,12 @@ static CopListT *MakeCopperList(int i) {
 }
 
 static void Init(void) {
-  /* extra memory for horizontal scrolling */
+  /* Vertical slack in the bitmap so coarse horizontal scroll does not run out of map. */
   short extra = tilemap_width * TILEW / WIDTH;
 
   Log("Allocate %d extra lines!\n", extra);
 
-  /* Use interleaved mode to limit number of issued blitter operations. */
+  /* Interleaved: one blit per tile stamps all planes (see file header). */
   screen[0] = NewBitmap(WIDTH, HEIGHT + extra, DEPTH,
                         BM_CLEAR | BM_INTERLEAVED);
   screen[1] = NewBitmap(WIDTH, HEIGHT + extra, DEPTH,
@@ -114,11 +142,20 @@ void TriggerRefresh(short x, short y, short w __unused, short h __unused)
   }
 }
 
+/*
+ * Poll Blitter Busy in DMACONR until clear (HRM: BBUSY bit 6). `custom` points at
+ * $DFF000; DMACONR is at offset +2 from the base of `struct Custom`.
+ */
 #define WAITBLT()                               \
   asm("1: btst #6,%0@(2)\n" /* dmaconr */       \
       "   bnes 1b"                              \
       :: "a" (custom));
 
+/*
+ * Stamp dirty 16×16 tiles for the visible HTILES×VTILES window. `custom` in a6 keeps
+ * the hot blitter register block address in a fixed address register (shorter encodings
+ * than reloading from global each time on some assemblers).
+ */
 static void UpdateTiles(BitmapT *screen, short x, short y,
                         CustomPtrT custom_ asm("a6"))
 {
@@ -149,6 +186,7 @@ static void UpdateTiles(BitmapT *screen, short x, short y,
       do {
         short tile = *map++;
 
+        /* `tile & ~3` is the tile index; low bits are dirty flags only. */
         if (tile & current) {
           void *src = *(void **)(ptrs + (tile & ~3));
 

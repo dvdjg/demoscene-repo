@@ -32,7 +32,15 @@ CFLAGS	= -ggdb3 -ffreestanding -fno-common $(OFLAGS) $(WFLAGS)
 OFLAGS	:= -m$(CPU_CC) -mregparm=2 -freg-struct-return
 # The '-O2' option does not turn on optimizations '-funroll-loops',
 # '-funroll-all-loops' and `-fstrict-aliasing'.
+# DEBUGBUILD=1: mejor visibilidad de variables locales en GDB (-O0, frame pointer).
+DEBUGBUILD ?= 0
+export DEBUGBUILD
+ifeq ($(DEBUGBUILD),1)
+OFLAGS	+= -O0 -fno-omit-frame-pointer
+else
+# -O2: no -funroll-loops / -funroll-all-loops / -fstrict-aliasing por defecto.
 OFLAGS	+= -O2 -fomit-frame-pointer -fstrength-reduce
+endif
 WFLAGS	:= -Wall -W -Werror -Wundef -Wsign-compare -Wredundant-decls
 WFLAGS	+= -Wnested-externs -Wwrite-strings -Wstrict-prototypes
 CPPFLAGS += -I$(TOPDIR)/include

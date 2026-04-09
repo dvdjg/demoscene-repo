@@ -1,3 +1,15 @@
+/*
+ * Effect: Ball — textured sphere with JIT UV-mapper, C2P, and hardware sprites.
+ *
+ * Pipeline: (1) Pre-built `uvmap` drives runtime-generated 68000 code that samples
+ * a split hi/lo texture into a chunky buffer. (2) Blitter chunky-to-planar converts
+ * to a small 4bpp bitmap. (3) That bitmap is copied into sprite DMA data; copper
+ * shows a dragon background + 8 sprites for the ball.
+ *
+ * Why hardware: C2P and sprite fetch are DMA; CPU only fills chunky + builds code once.
+ * HRM: Blitter, sprites, Copper — https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * Mirror: http://amigadev.elowar.com/read/
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -6,31 +18,51 @@
 #include <sprite.h>
 #include <system/memory.h>
 
+/* Full playfield: lores 320x256, 4 bitplanes (16 colours) for background. */
 #define S_WIDTH 320
 #define S_HEIGHT 256
 #define S_DEPTH 4
 
+/* UV-mapped object resolution (also sprite tile width in pixels). */
 #define WIDTH 64
 #define HEIGHT 64
 
+/* Two texture variants hold separated bit contributions (hi/lo) so the renderer
+ * can build planar-ready data with fewer operations per pixel sample. */
 static PixmapT *textureHi, *textureLo;
+/* Chunky 4bpp buffer filled by UVMapRender before C2P. */
 static PixmapT *chunky;
+/* Planar bitmap after C2P; fed into sprites. */
 static BitmapT *bitmap;
+/* CHIP memory holding raw sprite data for all sprites (two banks). */
 static SprDataT *sprdat;
+/* Two banks × 8 sprites: double-buffer for smooth updates (active toggles in Render). */
 static SpriteT *sprite[2][8];
 
 #include "data/dragon-bg.c"
 #include "data/texture-15.c"
 #include "data/ball.c"
 
+/* Which sprite/copper bank is displayed this frame (0 or 1). */
 static short active = 0;
+/* Double-buffered copper lists (background + sprite pointers). */
 static CopListT *cp[2];
 
+/* Bytes needed for generated UV mapper: ~10 words per 2 chunky pixels + epilogue. */
 #define UVMapRenderSize (WIDTH * HEIGHT / 2 * 10 + 2)
+/* JIT-style renderer assembled at runtime from precomputed UV offsets.
+ * C equivalent is straightforward but significantly slower on 68000. */
 void (*UVMapRender)(u_char *chunky asm("a0"),
                     u_char *textureHi asm("a1"),
                     u_char *textureLo asm("a2"));
 
+/*
+ * PixmapToTexture — expand one 4bpp chunky texel stream into parallel hi/lo buffers.
+ *
+ * Duplicates each half to `height*2` rows so Render() can scroll the texture cheaply
+ * by pointer offset (no per-frame recompute). Bit patterns interleave nibbles for
+ * the later C2P / sprite path (see comments inside the loop).
+ */
 static void PixmapToTexture(const PixmapT *image,
                             PixmapT *imageHi, PixmapT *imageLo)
 {
@@ -55,6 +87,14 @@ static void PixmapToTexture(const PixmapT *image,
   }
 }
 
+/*
+ * MakeUVMapRenderCode — synthesize 68000 instructions into MEMF_PUBLIC RAM.
+ *
+ * For each pair of map entries, emits move.b/or.b from texture bases into d0, then
+ * move.b d0,(a0)+ to the chunky buffer. Negative uvmap entries mean "clear" (moveq #0).
+ * C equivalent: nested loops over uvmap with indirect loads; codegen removes branches
+ * per pixel at the cost of one-time code size (classic demo technique).
+ */
 static void MakeUVMapRenderCode(void) {
   u_short *code = (void *)UVMapRender;
   u_short *data = uvmap;
@@ -78,6 +118,11 @@ static void MakeUVMapRenderCode(void) {
   *code++ = 0x4e75; /* rts */
 }
 
+/*
+ * MakeCopperList — build one display list: bitplanes for dragon background + 8 sprites.
+ *
+ * active: which sprite bank to point at (0 or 1). Returns finished copper list.
+ */
 static CopListT *MakeCopperList(int active) {
   CopListT *cp = NewCopList(80);
   CopInsPairT *sprptr = CopSetupSprites(cp);
@@ -89,6 +134,11 @@ static CopListT *MakeCopperList(int active) {
   return CopListFinish(cp);
 }
 
+/*
+ * Init — allocate buffers, build JIT code, set up sprites and copper, enable DMA.
+ *
+ * Effect has no Load(): everything is created here (framework calls Init once).
+ */
 static void Init(void) {
   bitmap = NewBitmap(WIDTH, HEIGHT, S_DEPTH, BM_CLEAR);
   chunky = NewPixmap(WIDTH, HEIGHT, PM_CMAP4, MEMF_CHIP);
@@ -130,6 +180,9 @@ static void Init(void) {
   EnableDMA(DMAF_RASTER | DMAF_SPRITE);
 }
 
+/*
+ * Kill — teardown: disable DMA, free copper lists, pixmaps, JIT buffer, sprite CHIP.
+ */
 static void Kill(void) {
   DisableDMA(DMAF_COPPER | DMAF_RASTER | DMAF_BLITTER | DMAF_SPRITE);
 
@@ -144,12 +197,19 @@ static void Kill(void) {
   DeleteBitmap(bitmap);
 }
 
+/* Chunky buffer size in bytes (WIDTH×HEIGHT 4bpp pixels, 2 pixels per byte). */
 #define BLTSIZE (WIDTH * HEIGHT / 2)
 
 #if (BLTSIZE / 4) > 1024
 #error "blit size too big!"
 #endif
 
+/*
+ * ChunkyToPlanar — blitter C2P: 8-bit chunky nibbles to 4 bitplanes (standard shuffle).
+ *
+ * Several passes swap 8×4, 4×2, 2×1 bit groups (see HRM Blitter minterms + shifts).
+ * Uses BSHIFT/ASHIFT/BLITREVERSE for in-place reordering; faster than CPU on OCS.
+ */
 static void ChunkyToPlanar(PixmapT *input, BitmapT *output) {
   void *planes = output->planes[0];
   void *chunky = input->pixels;
@@ -265,6 +325,11 @@ static void ChunkyToPlanar(PixmapT *input, BitmapT *output) {
   }
 }
 
+/*
+ * BitmapToSprite — copy each bitplane strip into hardware sprite data (4 pairs × 2).
+ *
+ * Uses A→D copy per plane; sprite layout expects interleaved words per attachment.
+ */
 static void BitmapToSprite(BitmapT *input, SpriteT *sprite[8]) {
   void *planes = input->planes[0];
   short bltsize = (input->height << 6) | 1;
@@ -302,6 +367,11 @@ static void BitmapToSprite(BitmapT *input, SpriteT *sprite[8]) {
   }
 }
 
+/*
+ * PositionSprite — place 8 sprite objects in a horizontal row (4 columns × 2 attached).
+ *
+ * xo,yo: animation offset from screen center; uses X()/Y() beam helpers for registers.
+ */
 static void PositionSprite(SpriteT *sprite[8], short xo, short yo) {
   short x = (S_WIDTH - WIDTH) / 2 + xo;
   short y = (S_HEIGHT - HEIGHT) / 2 + yo;
@@ -317,6 +387,11 @@ static void PositionSprite(SpriteT *sprite[8], short xo, short yo) {
 
 PROFILE(UVMapRender);
 
+/*
+ * Render — one frame: UV map + C2P + sprite upload + copper swap + vsync + buffer flip.
+ *
+ * active toggles so CPU writes the non-visible bank while the previous frame displays.
+ */
 static void Render(void) {
   short xo = normfx(SIN(frameCount * 16) * 128);
   short yo = normfx(COS(frameCount * 16) * 100);
@@ -338,4 +413,5 @@ static void Render(void) {
   active ^= 1;
 }
 
+/* No Load/UnLoad/VBlank: Init/Kill handle resources; Render does the frame. */
 EFFECT(Ball, NULL, NULL, Init, Kill, Render, NULL);

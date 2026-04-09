@@ -1,13 +1,36 @@
+/*
+ * TexTri / texobj — textured affine mapper on a 3D mesh + chunky buffer + IRQ C2P.
+ *
+ * High-level pipeline:
+ * 1) `cube` Object3D is transformed (TransformVertices — same factored multiply
+ *    trick as wireframe.c; matrix terms are adjusted in place, see WARNING).
+ * 2) Visible faces are rasterized as two triangles with affine UV: InitSide walks
+ *    each edge with fixed-point dxdy, dudy, dvdy; DrawTriangle splits quads and
+ *    calls DrawTriPart (implementation in mainloop.asm — hot scanline loop in 68k).
+ * 3) Chunky pixels use a 4-bit nibble expand via Pixel[] so each texture index
+ *    maps to OCS planar bit patterns before C2P.
+ * 4) ChunkyToPlanar runs as a Blitter interrupt chain: many passes shuffle the
+ *    scrambled chunky buffer into real bitplanes; case 11 copies background into
+ *    the buffer; case 12 patches BPL pointers and runs the copper list for line
+ *    doubling (double vertical resolution in display window).
+ *
+ * Why blitter IRQ: CPU cannot C2P a full 128×128 at 50 Hz in pure C; chaining
+ * blits across IRQs overlaps DMA with CPU triangle work on the next frame.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
 #include <fx.h>
 #include <pixmap.h>
 #include <3d.h>
-#include <fx.h>
 #include <system/interrupt.h>
 #include <system/memory.h>
 
+/* Internal render resolution before copper line-doubling (see MakeCopperList). */
 #define WIDTH 128
 #define HEIGHT 128
 #define DEPTH 4
@@ -20,23 +43,34 @@
 #include "data/cube-tex3.c"
 #include "data/cube-tex4.c"
 
+/* Double-buffered display bitmaps (WIDTH*2 × HEIGHT*2 after expand — see BUFSIZE). */
 static __code BitmapT *screen[2];
 static __code CopListT *cp[2];
 static __code CopInsPairT *bplptr[2];
+/* Alias for current chunky buffer: plane[0] (and [1]) hold packed chunky during C2P. */
 static __code u_char *chunky;
 static __code short active;
 static __code volatile short c2p_phase;
 static __code short c2p_active;
 static __code void **c2p_bpl;
 static __code Object3D *object;
+/* Five mip-style texture banks (scrambled indices → planar nibbles). */
 static __code short *texture[5];
 
-/* [0 0 0 0 a0 a1 a2 a3] => [a0 a1 0 0 a2 a3 0 0] */
+/*
+ * Nibble expand: map 4-bit index to two 16-bit OCS bit patterns for C2P stages.
+ * [0 0 0 0 a0 a1 a2 a3] => [a0 a1 0 0 a2 a3 0 0] per word (see ChunkyToPlanar header).
+ *
+ * Raw 4bpp indices would not survive the XOR/minterm shuffle passes unchanged; the
+ * texture and background are pre-expanded so each blit stage moves bits toward real
+ * bitplanes without a per-pixel CPU unpack (same idea as other chunky→planar demos).
+ */
 static const short Pixel[16] = {
   0x0000, 0x0404, 0x0808, 0x0c0c, 0x4040, 0x4444, 0x4848, 0x4c4c,
   0x8080, 0x8484, 0x8888, 0x8c8c, 0xc0c0, 0xc4c4, 0xc8c8, 0xcccc,
 };
 
+/* Maps face lighting bucket (from face flags) to which texture slot to use. */
 static const short texture_light[16] = {
   4, 4, 4, 4,
   3, 3, 3,
@@ -45,6 +79,7 @@ static const short texture_light[16] = {
   0, 0, 0,
 };
 
+/* Preprocess static background pixmap indices through Pixel[] in place. */
 static void ScrambleBackground(void) {
   u_char *src = background_pixels;
   u_char *dst = background_pixels;
@@ -55,6 +90,7 @@ static void ScrambleBackground(void) {
   }
 }
 
+/* Allocate and fill one texture mip level as scrambled short indices. */
 static short *ScrambleTexture(u_char *src) {
   short *tex = MemAlloc(texture_0_width * texture_0_height * 2, MEMF_PUBLIC);
   short n = texture_0_width * texture_0_height;
@@ -67,12 +103,14 @@ static short *ScrambleTexture(u_char *src) {
   return tex;
 }
 
+/* Screen + UV corner after vertex transform; yi is integer scanline bucket. */
 typedef struct Corner {
   short x, y;
   short u, v;
   short yi;
 } CornerT;
 
+/* One polygon edge: vertical span dy; along-edge stepping for x and u,v. */
 typedef struct Side {
   short dy;                     // 12.4 format
   short dxdy, dudy, dvdy;       // 8.8 format
@@ -91,6 +129,7 @@ static inline int part_frac(int num, int shift) {
 
 #define FRAC(n, k) part_int((n), (k)), part_frac((n), (k))
 
+/* Set up edge stepping from pa→pb; prestep aligns to 16.4 grid for scan conversion. */
 static void InitSide(SideT *s, CornerT *pa, CornerT *pb) {
   short dy = pb->y - pa->y;
   short dx = pb->x - pa->x;
@@ -145,11 +184,17 @@ static void InitSide(SideT *s, CornerT *pa, CornerT *pb) {
 #endif
 }
 
+/*
+ * Inner scanline rasterizer (see mainloop.asm): walks from `ys` to `ye`, interpolates
+ * u,v across the span between left/right edges, and writes chunky pixels. Register
+ * ABI fixed for hand-tuned assembly.
+ */
 void DrawTriPart(u_char *line asm("a0"), short *texture asm("a1"),
                  SideT *left asm("a2"), SideT *right asm("a3"),
                  int du asm("d2"), int dv asm("d3"),
                  int ys asm("d6"), int ye asm("d7"));
 
+/* Sort by y, compute constant ∂u/∂x, ∂v/∂x for affine mapping, then 1–2 DrawTriPart. */
 static void DrawTriangle(CornerT *p0, CornerT *p1, CornerT *p2, int color) {
   short *tex = texture[color];
 
@@ -191,7 +236,7 @@ static void DrawTriangle(CornerT *p0, CornerT *p1, CornerT *p2, int color) {
         v = s02.dvdy - s12.dvdy;
       }
 
-      /* TODO Probably ok to skip, no resulting visual effect. */
+      /* Degenerate triangle in x — skip (TODO: verify no visible holes). */
       if (x == 0)
         return;
 
@@ -231,6 +276,7 @@ static void DrawTriangle(CornerT *p0, CornerT *p1, CornerT *p2, int color) {
   D = normfx(t0 * t1 + t2 - x * y) + t3;        \
 }
 
+/* Same pattern as wireframe: project to 12.4 screen space + inv-z. */
 static void TransformVertices(Object3D *object) {
   Matrix3D *M = &object->objectToWorld;
   void *_objdat = object->objdat;
@@ -276,6 +322,7 @@ static void TransformVertices(Object3D *object) {
   } while (*group);
 }
 
+/* For each visible face, build 3 corners (vertex + UV), pick texture by light bucket. */
 static void DrawObject(Object3D *object) {
   void *_objdat = object->objdat;
   short *group = object->faceGroups;
@@ -327,6 +374,11 @@ static void DrawObject(Object3D *object) {
 
 #define C2P_LAST 13
 
+/*
+ * Blitter IRQ: advance C2P state machine. Several cases fall through (no break)
+ * so one IRQ kick runs multiple blits in sequence — intentional.
+ * Final phase updates copper BPL pointers for the doubled display.
+ */
 static void ChunkyToPlanar(CustomPtrT custom_) {
   register void **bpl = c2p_bpl;
 
@@ -351,8 +403,12 @@ static void ChunkyToPlanar(CustomPtrT custom_) {
    *
    * Line doubling is performed using copper. Rendered bitmap will have size
    * (WIDTH*2, HEIGHT, DEPTH) and will be placed in bpl[2] and bpl[3].
+   *
+   * Fall-through (cases 1→2, 3→4, 5→6, 7→8): one case sets blt pointers and
+   * minterm/con shift; the next case only kicks bltsize — two blits per logical step.
    */
 
+  /* Clear BLIT bit in INTREQ so the 68000 can receive the next blitter interrupt. */
   custom_->intreq_ = INTF_BLIT;
 
   switch (c2p_phase++) {
@@ -475,7 +531,11 @@ static void ChunkyToPlanar(CustomPtrT custom_) {
       break;
 
     case 11:
-      /* initialize rendering buffer - copy the background */
+      /*
+       * After C2P, copy the pre-scrambled background into the chunky working area
+       * in bpl[0] so the next frame’s triangle pass starts from sky + UV stamps,
+       * not leftover planar data (bpl[0]/[1] alias the chunky buffer layout).
+       */
       custom_->bltdpt = bpl[0];
       custom_->bltapt = background_pixels;
       custom_->bltcon0 = (SRCA | DEST) | A_TO_D;
@@ -501,6 +561,12 @@ static void ChunkyToPlanar(CustomPtrT custom_) {
   }
 }
 
+/*
+ * Arm C2P for the buffer that was just filled in Render. `c2p_active` snapshots it
+ * because case 12 must patch the matching copper `bplptr` after conversion.
+ * `active ^= 1` hands the other bitmap to the CPU for the next frame’s rasterization
+ * while IRQs finish shuffling the first buffer — classic async double buffer.
+ */
 static void ChunkyToPlanarStart(void) {
   c2p_active = active;
   c2p_phase = 0;
@@ -509,11 +575,17 @@ static void ChunkyToPlanarStart(void) {
   active ^= 1;
 }
 
+/* Spin until full C2P chain completes (blitter idle + phase counter). */
 static void ChunkyToPlanarWait(void) {
   while (BlitterBusy() || c2p_phase < C2P_LAST)
     continue;
 }
 
+/*
+ * Line doubling without a 2× framebuffer height: on every other line, negative
+ * bpl1mod/bpl2mod pulls the bitplane pointer back so DMA refetches the same row —
+ * Denise still outputs a new raster line, so the same logical pixels appear twice.
+ */
 static CopListT *MakeCopperList(short active) {
   CopListT *cp = NewCopList(HEIGHT * 2 * 3 + 50);
   short i;
@@ -528,6 +600,7 @@ static CopListT *MakeCopperList(short active) {
   return CopListFinish(cp);
 }
 
+/* Scramble pixmap data; build 3D object with mesh pushed back on Z. */
 static void Load(void) {
   ScrambleBackground();
 
@@ -551,6 +624,7 @@ static void UnLoad(void) {
   MemFree(texture[4]);
 }
 
+/* Bitmaps, copper line-doubling, blitter IRQ C2P; first C2P run fills display. */
 static void Init(void) {
   screen[0] = NewBitmap(WIDTH * 2, HEIGHT * 2, DEPTH, 0);
   screen[1] = NewBitmap(WIDTH * 2, HEIGHT * 2, DEPTH, 0);
@@ -579,6 +653,7 @@ static void Init(void) {
 }
 
 static void Kill(void) {
+  /* Tear down in reverse order of Init: copper, IRQ, blitter, bitmaps. */
   CopperStop();
 
   DisableINT(INTF_BLIT);
@@ -596,6 +671,7 @@ PROFILE(UpdateGeometry);
 PROFILE(DrawObject);
 
 static void Render(void) {
+  /* Draw into current buffer plane 0 as chunky scratch (see ChunkyToPlanar layout). */
   chunky = screen[active]->planes[0];
 
   ProfilerStart(UpdateGeometry);
@@ -614,6 +690,11 @@ static void Render(void) {
   }
   ProfilerStop(DrawObject);
 
+  /*
+   * Drain the blitter IRQ chain from the previous frame’s ChunkyToPlanarStart before
+   * we sync to the beam; then kick C2P for the buffer we just drew. Toggling `active`
+   * in Start means next frame draws into the other screen[] while this C2P runs.
+   */
   ChunkyToPlanarWait();
   TaskWaitVBlank();
   ChunkyToPlanarStart();

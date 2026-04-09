@@ -1,3 +1,23 @@
+/*
+ * Bobs3D — vertex-sorted “billboard” bobs over a dual-playfield metro background.
+ *
+ * The pilka mesh is only used to drive 3D positions: each vertex becomes one blitter
+ * stamp of a 48×32×3-plane flare tile from the precomputed bobs atlas (`flares32`).
+ * Depth (zp) maps to a vertical offset in that atlas — discrete pre-rendered scales
+ * instead of a true 3D perspective texture (cheap fake zoom).
+ *
+ * Blitter: A_OR_B with funnel shift for sub-word X; destination is interleaved
+ * screen bitmap (BM_INTERLEAVED), so scanline byte offset is y * 96 (WIDTH/8 × DEPTH).
+ * Source pointer adds z * rowbytes in the atlas for the chosen mip row.
+ *
+ * Copper: MODE_DUALPF — PF1 = bobs (3 planes), PF2 = carrion metro (2 planes); tall
+ * list swaps colour[0] and loads colour[9..11] per scanline from carrion_cols for
+ * the vertical gradient bar behind the playfield.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include "effect.h"
 #include "blitter.h"
 #include "copper.h"
@@ -8,6 +28,7 @@
 #define HEIGHT 256
 #define DEPTH 3
 
+/* Reference zp in depth quantization (see DrawObject z arithmetic). */
 #define TZ (-256)
 
 static Object3D *object;
@@ -21,12 +42,15 @@ static int active = 0;
 #include "data/carrion-metro-pal.c"
 #include "data/carrion-metro-data.c"
 
+/*
+ * Dual-PF copper: object bplpt + background bplpt; per-line palette trick so the
+ * metro column reads as a smooth vertical strip (colour[0] bar + colour 9–11).
+ */
 static CopListT *MakeCopperList(void) {
   CopListT *cp = NewCopList(100 + carrion_height * (carrion_cols_width + 3));
 
   CopMove16(cp, color[0], carrion_cols_pixels[0]);
 
-  /* interleaved bitplanes setup */
   CopWait(cp, Y(-1), HP(0));
 
   bplptr = CopMove32(cp, bplpt[0], screen[1]->planes[0]);
@@ -56,6 +80,7 @@ static CopListT *MakeCopperList(void) {
 
   return CopListFinish(cp);
 }
+
 static void Init(void) {
   object = NewObject3D(&pilka);
   object->translate.z = fx4i(TZ);
@@ -68,7 +93,7 @@ static void Init(void) {
   SetupMode(MODE_DUALPF, DEPTH + carrion_depth);
   LoadColors(bobs_colors, 0);
 
-  /* bitplane modulos for both playfields */
+  /* Interleaved PF1: skip other planes in same fetch; PF2 similar for 2 bg planes. */
   custom->bpl1mod = WIDTH / 8 * (DEPTH - 1);
   custom->bpl2mod = WIDTH / 8 * (carrion_depth - 1);
 
@@ -101,6 +126,7 @@ static void Kill(void) {
   D = normfx(t0 * t1 + t2 - xy) + t3;   \
 }
 
+/* All mesh vertices (no visibility filter — DrawObject stamps every point). */
 static void TransformVertices(Object3D *object) {
   Matrix3D *M = &object->objectToWorld;
   void *_objdat = object->objdat;
@@ -148,9 +174,14 @@ static void TransformVertices(Object3D *object) {
   } while (*group);
 }
 
+/* Bob quad size in pixels; bltsize uses DEPTH stacked rows in interleaved layout. */
 #define BOBW 48
 #define BOBH 32
 
+/*
+ * For every vertex: OR the bob tile into the screen. z selects vertical strip in
+ * the atlas (quantized); x supplies ASH shift; y advances dst by y * (WIDTH/8*DEPTH).
+ */
 static void DrawObject(Object3D *object, void *src, void *dst,
                        CustomPtrT custom_ asm("a6"))
 {
@@ -199,6 +230,7 @@ static void DrawObject(Object3D *object, void *src, void *dst,
         apt += z * (BOBW / 8) * DEPTH;
         dpt += (x & ~15) >> 3;
 #if 1
+        /* y * 32 * 3 == y * bytesPerLine for interleaved 3-plane row. */
         y <<= 5;
         y += y + y;
         dpt += y;
@@ -218,6 +250,7 @@ static void DrawObject(Object3D *object, void *src, void *dst,
   } while (*group);
 }
 
+/* Clear interleaved CHIP as one tall blit from plane[0] (height × depth lines). */
 static void BitmapClearI(BitmapT *bm) {
   WaitBlitter();
 
@@ -254,6 +287,7 @@ static void Render(void) {
 
   TaskWaitVBlank();
 
+  /* Patch PF1 BPL pointers; PF2 stays carrion (fixed in MakeCopperList). */
   CopInsSet32(&bplptr[0], screen[active]->planes[0]);
   CopInsSet32(&bplptr[2], screen[active]->planes[1]);
   CopInsSet32(&bplptr[4], screen[active]->planes[2]);

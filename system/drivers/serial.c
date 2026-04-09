@@ -1,3 +1,12 @@
+/*
+ * Serial port as FileT: IRQ-driven RX/TX queues.
+ *
+ * Purpose: wraps the UART (INTEN TBE/RBF) with small ring buffers so tasks can
+ * read/write without losing bytes at moderate baud rates. Uses multitasking
+ * notify when data arrives.
+ *
+ * HRM (serial hardware): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <custom.h>
 #include <debug.h>
 #include <stdio.h>
@@ -12,6 +21,7 @@
 #define CLOCK 3546895
 #define QUEUELEN 80
 
+/* CharQueueT — byte FIFO shared between task context and UART ISRs. */
 typedef struct {
   u_short head, tail;
   volatile u_short used;
@@ -21,10 +31,13 @@ typedef struct {
 struct File {
   FileOpsT *ops;
   u_int flags;
+  /* sendq: bytes waiting for TBE interrupt to drain. */
   CharQueueT sendq[1];
+  /* recvq: bytes captured by RBF interrupt until readers consume them. */
   CharQueueT recvq[1];
 };
 
+/* _PushChar — low-level enqueue without locking (caller must provide atomicity). */
 static void _PushChar(CharQueueT *queue, u_char data) {
   if (queue->used < QUEUELEN) {
     queue->data[queue->tail] = data;
@@ -35,6 +48,7 @@ static void _PushChar(CharQueueT *queue, u_char data) {
   }
 }
 
+/* _PopChar — low-level dequeue without locking, returns -1 if empty. */
 static int _PopChar(CharQueueT *queue) {
   int result = -1;
   if (queue->used > 0) {
@@ -45,6 +59,8 @@ static int _PopChar(CharQueueT *queue) {
   return result;
 }
 
+/* PushChar — enqueue for TX, or write directly to SERDAT when transmitter is idle.
+ * Blocking mode waits for queue space via TaskWait(INTF_TBE). */
 static void PushChar(CharQueueT *queue, u_char data, u_int flags) {
   /* If send queue and serdat register are empty,
    * then push out first character directly. */
@@ -59,6 +75,7 @@ static void PushChar(CharQueueT *queue, u_char data, u_int flags) {
   IntrEnable();
 }
 
+/* PopChar — dequeue one RX byte; blocking mode waits for INTF_RBF notification. */
 static int PopChar(CharQueueT *queue, u_int flags) {
   int result;
   IntrDisable();
@@ -72,6 +89,7 @@ static int PopChar(CharQueueT *queue, u_int flags) {
   return result;
 }
 
+/* SendIntHandler — TBE ISR: feed next queued byte to UART TX register. */
 static void SendIntHandler(FileT *f) {
   CharQueueT *sendq = f->sendq;
   int data;
@@ -84,6 +102,7 @@ static void SendIntHandler(FileT *f) {
   }
 }
 
+/* RecvIntHandler — RBF ISR: move received byte from SERDATR into recv queue. */
 static void RecvIntHandler(FileT *f) {
   CharQueueT *recvq = f->recvq;
   u_short code = custom->serdatr;
@@ -108,6 +127,7 @@ static FileOpsT SerialOps = {
 
 static MUTEX(SerialMtx);
 
+/* OpenSerial — singleton open: config baud divider, install IRQ handlers, enable INTs. */
 FileT *OpenSerial(u_int baud, u_int flags) {
   static FileT *f = NULL;
 
@@ -142,6 +162,7 @@ static void SerialClose(FileT *f) {
   MemFree(f);
 }
 
+/* SerialWrite — push buffer to TX queue; emits CR after LF for terminal compatibility. */
 static int SerialWrite(FileT *f, const void *_buf, u_int nbyte) {
   const u_char *buf = _buf;
   u_int i;
@@ -156,6 +177,7 @@ static int SerialWrite(FileT *f, const void *_buf, u_int nbyte) {
   return nbyte;
 }
 
+/* SerialRead — read up to nbyte bytes, stopping early on newline. */
 static int SerialRead(FileT *f, void *_buf, u_int nbyte) {
   u_char *buf = _buf;
   u_int i = 0;

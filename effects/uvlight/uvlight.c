@@ -1,3 +1,20 @@
+/*
+ * UVLight — textured torus with light map + optional JIT UV inner loop + HAM C2P.
+ *
+ * Difference from uvmap-rgb.c: each pixel combines a UV coordinate (`uvmap`)
+ * with a per-texel light index (`light` pixmap). The optimized path emits
+ * `move.w` / `move.w (a2,d0.w),(a0)+` pairs; odd UV LSB skips a pixel (`addq.l #2,a0`)
+ * for a cheap transparency / hole mask in the map.
+ *
+ * `Load` builds `shademap`: for every base texture colour, 32 darkening + 32
+ * brightening steps via `ColorTransition`, then `PixelScramble` into HAM nibbles —
+ * so one chunky write selects lit RGB without runtime multiply.
+ *
+ * Same ChunkyToPlanar IRQ ladder and copper line-quadrupling as UVMapRGB; this
+ * build also positions hardware sprites (`skull`) via CopSetupSprites.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <color.h>
@@ -31,6 +48,7 @@ static __code u_short *texture;
 static void (*UVMapRender)(u_short *chunky asm("a0"), u_short *texture asm("a1"),
                            u_short *shades asm("a2"));
 
+/* JIT: per pixel either skip (transparent) or UV-fetch + shaded colour table lookup. */
 static void MakeUVMapRenderCode(void) {
   u_short *code = (void *)UVMapRender;
   u_short *data = uvmap;
@@ -97,6 +115,7 @@ static u_short redtab[16] = {
 
 #undef F
 
+/* Pack one RGB12 chunky sample into HAM-style nibble mix (same tables as uvmap-rgb). */
 static inline u_int PixelScramble(u_short data) {
   short ri = (data >> 8) & 15;
   short gi = (data >> 4) & 15;
@@ -109,6 +128,7 @@ static inline u_int PixelScramble(u_short data) {
   return getword(redtab, ri) + getword(greentab, gi) + getword(bluetab, bi);
 }
 
+/* Quantize light map, precompute lit palette strips into `shademap`, upload texture. */
 static void Load(void) {
   {
     u_char *src = light_pixels;
@@ -279,6 +299,7 @@ static void ChunkyToPlanar(void) {
   ClearIRQ(INTF_BLIT);
 }
 
+/* HAM + sprites: same line repeat / BPLCON1 shuffle as sister effect; 8 skull SPRx. */
 static CopListT *MakeCopperList(void) {
   CopListT *cp = NewCopList(1200);
   short i;

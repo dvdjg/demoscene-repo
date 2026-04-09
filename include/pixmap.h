@@ -1,8 +1,19 @@
+/*
+ * Image/bitmap representation (pixmap.h) for CHIP-resident graphics.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef __PIXMAP_H__
 #define __PIXMAP_H__
 
 #include "gfx.h"
 
+/*
+ * Pixmap — chunky pixels (indexed or RGB nibbles) vs planar BitmapT.
+ * Used for tools / c2p path: CPU fills chunky buffer, then scrambles to bitplanes.
+ */
 typedef enum {
   PM_NONE, PM_DEPTH_4, PM_DEPTH_8,
   _PM_CMAP = 4,
@@ -34,9 +45,11 @@ PixmapT *NewPixmap(short width, short height,
                              PixmapTypeT type, u_int memFlags);
 void DeletePixmap(PixmapT *pixmap);
 
-/* [a0 a1 a2 a3 b0 b1 b2 b3] => [a0 b0 a2 b1 a1 b2 a3 b3] */
+/*
+ * PixmapScramble_* — reorder bytes for c2p (chunky-to-planar) blitter layouts.
+ * _4_1 / _4_2 differ in interleaving pattern for 4 bitplanes; see lib implementation.
+ */
 void PixmapScramble_4_1(const PixmapT *pixmap);
-/* [a0 a1 a2 a3 b0 b1 b2 b3] => [a0 a1 b0 b1 a2 a3 b2 b3] */
 void PixmapScramble_4_2(const PixmapT *pixmap);
 
 #endif

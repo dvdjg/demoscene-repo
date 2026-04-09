@@ -1,3 +1,10 @@
+/*
+ * Minimal libc/runtime piece for bare-metal (string/memcpy.S).
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 # This code is covered by BSD license. It was taken from NetBSD
 # common/lib/libc/arch/m68k/string/bcopy.S
 
@@ -47,6 +54,13 @@ ENTRY(memcpy)
         and.l   #31,d1          /*      len %= 32 */
         subq.l  #1,d0           /*      set up for dbf */
 .Lbcf32loop:
+        /*
+         * Conceptual C:
+         *   for (int i=0; i<8; ++i) *(uint32_t*)dst++ = *(uint32_t*)src++;
+         *
+         * Unrolled by 8 to reduce branch overhead on 68000/010 where branch
+         * penalties are significant versus straight move.l streams.
+         */
         move.l  (a0)+,(a1)+     /*      copy 8 long words */
         move.l  (a0)+,(a1)+
         move.l  (a0)+,(a1)+
@@ -82,6 +96,11 @@ ENTRY(memcpy)
         rts
 
 .Lbcback:
+        /*
+         * Backward copy path handles overlap when dst starts inside src range:
+         * bytes are copied from end to beginning to avoid clobbering unread src.
+         * This is memmove semantics; memcpy alias keeps compatibility in this libc.
+         */
         add.l   d1,a0           /* src pointer to end */
         add.l   d1,a1           /* dest pointer to end */
 
@@ -118,6 +137,7 @@ ENTRY(memcpy)
         and.l   #31,d1          /*      len %= 32 */
         subq.l  #1,d0           /*      set up for dbf */
 .Lbcb32loop:
+        /* Same 8x unroll as forward path, but with pre-decrement addressing. */
         move.l  -(a0),-(a1)     /*      copy 8 long words */
         move.l  -(a0),-(a1)
         move.l  -(a0),-(a1)

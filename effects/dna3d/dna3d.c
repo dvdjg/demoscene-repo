@@ -1,3 +1,10 @@
+/*
+ * dna3d — 3D DNA helix object animation.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include "effect.h"
 #include "blitter.h"
 #include "copper.h"

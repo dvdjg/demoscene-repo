@@ -1,3 +1,12 @@
+/*
+ * PlayCTR — Cinter tracker player (.ctr + separate sample blob).
+ *
+ * `CinterPlayerT` drives `JazzCat_Automatic` music; samples linked via `binary_data_*`.
+ * Minimal 1bpp display + console for status; same scaffolding as other `play*` effects.
+ * See `cinter.h` for API.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <cinter.h>

@@ -1,3 +1,13 @@
+/*
+ * PlayAHX — AHX module replayer with on-screen console + wave scope visualizer.
+ *
+ * Links embedded `jazzcat_electric_city.ahx`; uses `ahx.h` API and CIA timer (`ahxtmr`)
+ * for tick rate. `wavescope` builds per-channel mini bitmaps and a blitter-drawn grid
+ * (`InitWaveScope`); samples are massaged through `multab` for cheap scaling. Demonstrates
+ * audio + 1bpp gfx + IRQ timing on bare metal.
+ *
+ * HRM (Paula/DMA timing context): https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <ahx.h>
 #include <blitter.h>

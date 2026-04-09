@@ -1,3 +1,10 @@
+/*
+ * layers — Parallax scrolling layers.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include "effect.h"
 #include "copper.h"
 #include "gfx.h"

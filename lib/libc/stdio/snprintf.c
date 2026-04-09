@@ -1,3 +1,10 @@
+/*
+ * Minimal libc/runtime piece for bare-metal (stdio/snprintf.c).
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #include <stdio.h>
 
 struct print_buf {

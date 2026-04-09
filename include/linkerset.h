@@ -1,3 +1,10 @@
+/*
+ * Linker sets for Init/Exit lists and effect registration.
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef __LINKERSET_H__
 #define __LINKERSET_H__
 

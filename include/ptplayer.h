@@ -1,3 +1,10 @@
+/*
+ * Music playback / audio module interface (ptplayer.h).
+ *
+ * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * RKM https://archive.org/details/amiga-rom-kernel-reference-manual
+ * HRM mirror http://amigadev.elowar.com/read/
+ */
 #ifndef PTPLAYER_H
 #define PTPLAYER_H
 

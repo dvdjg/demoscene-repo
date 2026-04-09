@@ -1,3 +1,10 @@
+/*
+ * Minimal read-only filesystem for demo disk images.
+ *
+ * Purpose: maps a simple directory of FileEntry records (CRC32, sector start,
+ * size) on top of a FloppyOpen device; FileRead seeks sector-wise and verifies
+ * checksums. This is not AmigaDOS FFS — it is a compact demo packer format.
+ */
 #include <debug.h>
 #include <common.h>
 #include <string.h>
@@ -26,15 +33,18 @@ static FileEntryT *NextFileEntry(FileEntryT *fe) {
   return (void *)fe + fe->reclen;
 }
 
+/* Mounted block device and parsed root directory table. */
 static FileT *FileSysDev;
 /* Finished by NUL character (reclen = 0). */
 static FileEntryT *FileSysRootDir;
 
 struct File {
   FileOpsT *ops;
+  /* Current byte position inside this file. */
   int pos;
   u_short flags;
 
+  /* Byte range in underlying device where this file payload lives. */
   u_int start;
   u_int size;
 };
@@ -50,6 +60,7 @@ static FileOpsT FsOps = {
   .close = FsClose
 };
 
+/* LookupFile — linear scan in custom directory format by filename. */
 static FileEntryT *LookupFile(const char *path) {
   FileEntryT *fe = FileSysRootDir;
 
@@ -74,6 +85,7 @@ FileT *OpenFile(const char *path) {
 
   f = MemAlloc(sizeof(FileT), MEMF_PUBLIC|MEMF_CLEAR);
   f->ops = &FsOps;
+  /* +2 sectors skips disk header + root directory area in this FS layout. */
   f->start = (entry->start + 2) * SECTOR_SIZE;
   f->size = entry->size;
 
@@ -97,8 +109,10 @@ static int FsRead(FileT *f, void *buf, u_int nbyte) {
 
   Debug("$%p $%p %d+%d", f, buf, f->pos, nbyte);
 
+  /* Clamp read request to remaining file bytes. */
   left = min(left, f->size - f->pos);
 
+  /* Underlying device is random-access; seek absolute payload position first. */
   (void)FileSeek(FileSysDev, f->pos + f->start, SEEK_SET);
 
   if ((res = FileRead(FileSysDev, buf, left)) < 0)
@@ -141,6 +155,7 @@ static int FsSeek(FileT *f, int offset, int whence) {
 
 #define ONSTACK(x) (&(x)), sizeof((x))
 
+/* InitFileSys — mount simple directory table from already opened floppy/file device. */
 void InitFileSys(FileT *dev) {
   u_short rootDirLen;
 
@@ -171,6 +186,7 @@ void InitFileSys(FileT *dev) {
 
 void KillFileSys(void) {
   if (FileSysRootDir) {
+    /* Mounted device is owned by filesystem layer after InitFileSys(). */
     FileClose(FileSysDev);
     MemFree(FileSysRootDir);
     FileSysDev = NULL;
@@ -178,6 +194,7 @@ void KillFileSys(void) {
   }
 }
 
+/* ChecksumFile — full-file CRC32 verification against directory metadata. */
 static void ChecksumFile(const char *path, u_int size, u_int cksum) {
   FileT *f = OpenFile(path);
   u_char *data = MemAlloc(size, MEMF_PUBLIC);

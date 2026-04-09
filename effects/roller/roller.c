@@ -1,3 +1,13 @@
+/*
+ * Roller — vertical **raster colour roller** with many Copper MOVEs to COLOR0 + bitmap.
+ *
+ * `ciColor[]` patches `NTRANSITIONS` colour instructions; `lineheights` and frame
+ * logic scroll a palette through a vertical window (`VPSTART`, `LFRAME`/`RFRAME`).
+ * Optional `__ANIMATE` disables live copperlist edits. Uses floor/texture assets and
+ * sync helpers for music timing.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>

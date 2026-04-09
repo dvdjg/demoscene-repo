@@ -1,3 +1,11 @@
+/*
+ * Fixed-point and trig — sintab in libmisc, 1/12 fractional bits common in demos.
+ *
+ * SIN/COS: phase `a` indexes 4096-entry table (SIN_MASK); COS = SIN(a+π/2).
+ * normfx: scale 32-bit int to 16-bit fixed (lsl #4 + swap) — one fast path for 68000.
+ * C equivalent of normfx: `(short)(a >> 12)` with rounding differs; this matches asm.
+ * shift12: widen short fixed to int. fx4i/fx12i: int/float to fixed constants.
+ */
 #ifndef __FIXED_POINT_H__
 #define __FIXED_POINT_H__
 
@@ -33,6 +41,7 @@ static inline int shift12(short a) {
   return b;
 }
 
+/* Integer to 4.12 / 12.4 fixed (compile-time friendly). */
 #define fx4i(i) \
   (short)((u_short)(i) << 4)
 
@@ -45,6 +54,7 @@ static inline int shift12(short a) {
 #define fx12f(f) \
   (short)((float)(f) * 4096.0)
 
+/* Integer square root — used in vector normalize; CPU-only. */
 int isqrt(int x);
 
 #endif

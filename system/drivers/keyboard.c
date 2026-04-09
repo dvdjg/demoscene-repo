@@ -1,3 +1,12 @@
+/*
+ * Amiga keyboard matrix decoder → ASCII events.
+ *
+ * Purpose: CIA ports interrupt on key transitions; keycodes map through KeyMap
+ * to characters. Feeds the shared event queue.
+ *
+ * CIA keyboard: HRM "Parallel Port" / CIA sections; Amiga keyboard protocol is
+ * scan-matrix based — see HRM and RKM hardware chapters.
+ */
 #include <debug.h>
 #include <system/cia.h>
 #include <system/event.h>
@@ -8,6 +17,10 @@
 #define LO(K, V) [K] = V
 #define HI(K, V) [K | 0x80] = V
 
+/* KeyMap[raw] -> ASCII or modifier bit:
+ * - LOW half: unshifted mapping,
+ * - HIGH half (code|0x80): shifted mapping.
+ * Special entries at the end are keyboard protocol status/error tokens. */
 /* clang-format off */
 static const u_char KeyMap[256] = {
   LO(KEY_BACKQUOTE, '`'),
@@ -149,6 +162,9 @@ static const u_char KeyMap[256] = {
 static u_char modifier;
 static CIATimerT *kbdtmr;
 
+/* PushKeyEvent — convert raw Amiga key byte to EV_KEY and enqueue from ISR.
+ * raw bit7 indicates release; low 7 bits are key code.
+ * For printable keys (< KEY_LSHIFT), ascii depends on current MOD_SHIFT state. */
 static void PushKeyEvent(u_char raw) {
   KeyEventT ev;
   u_char code = raw & 0x7f;
@@ -182,7 +198,7 @@ static int KeyboardIntHandler(void) {
     ciaa->ciacra |= CIACRAF_SPMODE;
     WaitTimerSpin(kbdtmr, TIMER_US(85));
     ciaa->ciacra &= ~CIACRAF_SPMODE;
-    /* Save raw key in the queue. Filter out exceptional conditions. */
+    /* Save raw key in the queue. Filter out exceptional conditions/status codes. */
     {
       u_char raw = (sdr >> 1) | (sdr << 7);
       if (KeyMap[raw] != (u_char)-1)
@@ -195,6 +211,8 @@ static int KeyboardIntHandler(void) {
 
 INTSERVER(KeyboardServer, -5, (IntFuncT)KeyboardIntHandler, NULL);
 
+/* KeyboardInit — reserve CIA timer helper, enable CIA-A serial-port interrupt,
+ * and register INTB_PORTS server for keyboard bytes. */
 void KeyboardInit(void) {
   Log("[Keyboard] Initialize driver!\n");
 

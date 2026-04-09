@@ -1,3 +1,23 @@
+/*
+ * Abduction — narrative scene: background bitplanes + hardware sprites (UFO beam, chicken, side beams).
+ *
+ * Bitplanes hold the static sky/ground; moving rings are blitted with `BitmapCopyArea` /
+ * `BitmapClearArea`. Sprites carry the high-contrast beam and the chicken so those shapes
+ * stay sharp without burning blitter time every line. Sprite indices 0,2,4,5 are used
+ * (Amiga pairs: 0–1, 2–3, …) so attachments line up with `sprptr[]` in the copper list.
+ *
+ * Beam colours 21–27 are copper-moved (`beam_pal_cp` + `SwitchBeamPal`) for a cheap
+ * “energy” pulse without redrawing sprite data. `BPLCON2_PF1P_SP07 | BPLCON2_PF2P_SP07`
+ * keeps sprites in front of both playfields where needed (see HRM playfield/sprite priority).
+ *
+ * Two CHIP bitmaps: per-frame `active` toggles after VBlank; phases either stamp into
+ * `screen[active]` only or refresh both (e.g. clearing rings / UFO escape) so the two
+ * buffers stay consistent for the next blit.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include <effect.h>
 #include <blitter.h>
 #include <copper.h>
@@ -107,6 +127,7 @@ static void ClearRing(BitmapT *dst, short height) {
   BitmapClearArea(dst, &ring_area);
 }
 
+/* Patch only colour registers already referenced in the copper list — no list rebuild. */
 static void SwitchBeamPal(void) {
   CopInsT *ins = beam_pal_cp;
   short i = 0;
@@ -270,7 +291,7 @@ static void Init(void) {
   cp = MakeCopperList();
   CopListActivate(cp);
 
-  /* video priorities: PF1 > PF2 > SP07 */
+  /* Sprite/playfield layering for this scene (HRM BPLCON2 priority bits). */
   custom->bplcon2 = BPLCON2_PF1P_SP07 | BPLCON2_PF2P_SP07;
 
   DrawBackground(screen[0]);

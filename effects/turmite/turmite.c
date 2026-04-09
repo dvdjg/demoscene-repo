@@ -1,3 +1,22 @@
+/*
+ * Turmite — Langton-style **cellular automaton** on a 256² board, rendered as 4bpp.
+ *
+ * A turmite reads/writes a cell and turns; rules live in `TurmiteT` (`rules[3][2]`).
+ * The board packs **tile value in high bits** and **3-bit colour** in low bits (`STEP`
+ * aligns writes — see comments near `STEP`). `BitmapToBoard` expands a 1bpp scene
+ * bitmap into this packed format using a 256-entry LUT so each source byte expands
+ * to eight cells in one step.
+ *
+ * Init copies `scene` with `BlitterCopyFast` then seeds `board`. The simulation steps
+ * in `Render` (NSTEPS per frame); visible result is blitted back to `screen` bitplanes
+ * so the Copper DMA shows it (simple `CopSetupBitplanes` list).
+ *
+ * Why CPU automaton + blitter display: the Amiga has no GPU for general CA; blitter
+ * only moves the framebuffer. The interesting logic is entirely **integer stepping**
+ * on `board[]`.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ */
 #include "effect.h"
 
 #include "custom.h"

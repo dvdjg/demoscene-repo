@@ -1,3 +1,10 @@
+/*
+ * carrion — Scene effect with embedded narrative gfx.
+ *
+ * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
+ * HRM mirror: http://amigadev.elowar.com/read/
+ */
+
 #include "effect.h"
 #include "copper.h"
 #include "pixmap.h"
