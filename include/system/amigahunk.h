@@ -1,5 +1,5 @@
 /*
- * System API: amigahunk — see system/*.c for implementation.
+ * System API: amigahunk — see system/ *.c for implementation.
  *
  * English tutorial supplement: HRM https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
  * RKM https://archive.org/details/amiga-rom-kernel-reference-manual

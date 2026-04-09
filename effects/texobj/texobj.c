@@ -1,7 +1,24 @@
 /*
  * TexTri / texobj — textured affine mapper on a 3D mesh + chunky buffer + IRQ C2P.
  *
- * High-level pipeline:
+ * ---------------------------------------------------------------------------
+ * What “a textured cube” costs on this machine (and what this effect does not do)
+ * ---------------------------------------------------------------------------
+ * There is no geometry processor: the 68000 transforms vertices, tests face visibility,
+ * and rasterizes. Denise only ever sees **planar bitplanes**; there is no “texturing
+ * unit”. True perspective-correct u/w, v/w per pixel would multiply the inner loop cost.
+ * This demo therefore uses **affine** mapping: constant ∂u/∂x and ∂v/∂x across each
+ * triangle (mathematically exact for a parallelogram in texture space, approximate for a
+ * 3D triangle — acceptable for a small cube and low internal resolution).
+ *
+ * Internal rasterization is **128×128**, **4bpp chunky indices** (one nibble per pixel).
+ * The visible window is **256×256** because the copper **reuses each scanline’s fetch**
+ * (negative BPLMOD on alternate lines) instead of allocating a 256-line-deep playfield.
+ * That saves CHIP RAM and bandwidth at the price of a vertical-only upscale.
+ *
+ * ---------------------------------------------------------------------------
+ * High-level pipeline
+ * ---------------------------------------------------------------------------
  * 1) `cube` Object3D is transformed (TransformVertices — same factored multiply
  *    trick as wireframe.c; matrix terms are adjusted in place, see WARNING).
  * 2) Visible faces are rasterized as two triangles with affine UV: InitSide walks
@@ -16,6 +33,32 @@
  *
  * Why blitter IRQ: CPU cannot C2P a full 128×128 at 50 Hz in pure C; chaining
  * blits across IRQs overlaps DMA with CPU triangle work on the next frame.
+ *
+ * ---------------------------------------------------------------------------
+ * Optimizations used here (why they matter)
+ * ---------------------------------------------------------------------------
+ * **Geometry:** `MULVERTEX` avoids a naive 3×3×vertex multiply by folding terms
+ *    (same idea as wireframe.c), reducing multiplies and loads.
+ * **Rasterization:** `DrawTriPart` is hand-written 68000 (mainloop.asm) with a fixed
+ *    register ABI — the scanline inner loop is not left to the C compiler.
+ * **Textures:** five **pre-scrambled** mip levels (`ScrambleTexture`) selected by
+ *    `texture_light` from face shading — cheap LOD, not trilinear. Indices are expanded
+ *    through `Pixel[]` at load time so C2P passes need no per-pixel unpack. **U is
+ *    doubled** in `InitSide` to match texture layout / sampling stride.
+ * **C2P:** blitter-driven shuffle (see prototype comment near `C2P_LAST`); IRQ fall-through
+ *    runs multiple blits per interrupt where safe; case 11 restores sky from preprocessed
+ *    `background_pixels`.
+ * **Display:** copper **line doubling** via BPLMOD rewind (HRM) instead of drawing 256
+ *    unique raster lines of cube data.
+ *
+ * ---------------------------------------------------------------------------
+ * Further optimization (possible directions — profile before rewriting)
+ * ---------------------------------------------------------------------------
+ * - Smaller internal resolution or fewer planes → less C2P (quality cost).
+ * - Different C2P strategy or more CPU assist if IRQ blitter time dominates (see prototypes).
+ * - Move more of `DrawTriangle` / edge setup to asm only if profiling shows C-bound.
+ * - Perspective correction: usually too expensive for 68000@~7MHz at this fill rate.
+ * - Tighter culling / fewer overdrawn spans on larger meshes.
  *
  * HRM: https://archive.org/details/amiga-hardware-reference-manual-3rd-edition
  * HRM mirror: http://amigadev.elowar.com/read/
