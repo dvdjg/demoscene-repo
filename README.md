@@ -74,6 +74,14 @@ If all of the above fails please ping `cahirwpz` on Discord. Prepare exact
 steps to reproduce error. Please respect my time and don't ping me because
 you don't have time to debug the issue.
 
+### Experimental C++ engine layer (`amiga-engine/`)
+
+The directory [amiga-engine/](amiga-engine/) holds a **C++20** game-engine sketch
+(copper/blitter/scene abstractions) with **host unit tests** (`make -C amiga-engine host-test`).
+The on-target entry point today is a thin **C bridge**; see `effects/engine-demo/` and
+[amiga-engine/docs/ARCHITECTURE.md](amiga-engine/docs/ARCHITECTURE.md).
+Long-form design roadmap (Spanish): [amiga-engine/docs/roadmap/README.md](amiga-engine/docs/roadmap/README.md).
+
 ## Running the effect under emulator
 
 1. Change current working directory to `effects/ball/` (or other effect in this

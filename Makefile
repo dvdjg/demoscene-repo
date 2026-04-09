@@ -1,6 +1,6 @@
 TOPDIR = $(realpath .)
 
-SUBDIRS = tools lib system effects demo
+SUBDIRS = tools lib system amiga-engine effects demo
 CLEAN-FILES = bootloader.bin addchip.bootblock.bin vbrmove
 
 all: bootloader.bin addchip.bootblock.bin vbrmove build

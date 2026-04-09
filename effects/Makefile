@@ -18,6 +18,7 @@ SUBDIRS := \
 	darkroom \
 	dna3d \
 	empty \
+	engine-demo \
 	flatshade \
 	flatshade-convex \
 	floor \
