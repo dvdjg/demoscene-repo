@@ -46,9 +46,9 @@ static u_short redtab[16] = {
 };
 
 #define BumpMapRenderSize (skulls_width * skulls_height * 8 + 2)
-typedef void (*BumpMapRenderT)(u_short *chunky asm("a0"), 
-                               u_short *lightmap asm("a1"),
-                               u_short *shademap asm("a2"));
+typedef void (*BumpMapRenderT)(u_short *chunky __ASM_REG_PARM("a0"), 
+                               u_short *lightmap __ASM_REG_PARM("a1"),
+                               u_short *shademap __ASM_REG_PARM("a2"));
 static BumpMapRenderT BumpMapRender;
 
 #define BumpMapRenderBackupSize (HEIGHT * 4)

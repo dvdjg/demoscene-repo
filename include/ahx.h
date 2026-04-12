@@ -58,10 +58,10 @@ void AhxKillCIA(void);
 #define AHX_FILTERS 0
 #define AHX_NO_FILTERS 1
 
-int AhxInitPlayer(int waves asm("d0"), int filters asm("d1"));
+int AhxInitPlayer(int waves __ASM_REG_PARM("d0"), int filters __ASM_REG_PARM("d1"));
 
-int AhxInitModule(void *module asm("a0"));
-int AhxInitSubSong(int subsong asm("d0"), int waitPlay asm("d1"));
+int AhxInitModule(void *module __ASM_REG_PARM("a0"));
+int AhxInitSubSong(int subsong __ASM_REG_PARM("d0"), int waitPlay __ASM_REG_PARM("d1"));
 void AhxInterrupt(void);
 void AhxStopSong(void);
 void AhxKillPlayer(void);

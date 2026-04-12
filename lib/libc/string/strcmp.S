@@ -13,6 +13,10 @@
 # [a0] s1
 # [a1] s2
 ENTRY(strcmp)
+#if defined(__ELF__)
+        move.l 4(%sp),%a0
+        move.l 8(%sp),%a1
+#endif
 .L1:                            /* unrolled by 4 for 680[23]0's */
         /*
          * Unrolled compare body:

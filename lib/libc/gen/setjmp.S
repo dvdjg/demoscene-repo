@@ -41,6 +41,9 @@
  * ABI: a0 points to jmp_buf (see `setjmp(jmp_buf asm("a0"))` in setjmp.h).
  */
 ENTRY(setjmp)
+#if defined(__ELF__)
+        move.l 4(%sp),%a0
+#endif
         movem.l d2-d7/a2-a7,(a0)        /* snapshot callee-saved registers */
         move.l  (sp),48(a0)             /* return address of this setjmp call */
         moveq.l #0,d0                   /* direct call returns 0 */

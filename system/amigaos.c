@@ -52,6 +52,7 @@
 #include <debug.h>
 #include <string.h>
 #include <strings.h>
+#include <cdefs.h>
 
 /* Use _custom definition provided by the linker (mapped custom-chip registers). */
 extern struct Custom volatile _custom;
@@ -96,8 +97,8 @@ static inline void bset(CiaRegT reg, char bit) {
 
 /* GetTimerState — snapshot one CIA timer register set (control + current + latch).
  * Based on jst_cus.asm from https://github.com/jotd666/jst */
-static void GetTimerState(CiaRegT cr asm("a0"), CiaRegT tlo asm("a1"),
-                          CiaRegT thi asm("a2"), TimerStateT *ts asm("a3"))
+static void GetTimerState(CiaRegT cr __ASM_REG_PARM("a0"), CiaRegT tlo __ASM_REG_PARM("a1"),
+                          CiaRegT thi __ASM_REG_PARM("a2"), TimerStateT *ts __ASM_REG_PARM("a3"))
 {
   ts->cr = *cr;
 
@@ -115,8 +116,8 @@ static void GetTimerState(CiaRegT cr asm("a0"), CiaRegT tlo asm("a1"),
 }
 
 /* SetTimerState — restore one CIA timer set saved by GetTimerState. */
-static void SetTimerState(CiaRegT cr asm("a0"), CiaRegT tlo asm("a1"),
-                          CiaRegT thi asm("a2"), TimerStateT *ts asm("a3"))
+static void SetTimerState(CiaRegT cr __ASM_REG_PARM("a0"), CiaRegT tlo __ASM_REG_PARM("a1"),
+                          CiaRegT thi __ASM_REG_PARM("a2"), TimerStateT *ts __ASM_REG_PARM("a3"))
 {
   *cr = 0;
   nop();

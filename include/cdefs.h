@@ -15,6 +15,14 @@
 #define __GNUC_PREREQ__(x, y) 0
 #endif
 
+/* Parámetros en registros (asm("a0")…) en prototipos: soportado por el gcc
+ * m68k-amigaos del demoscene-toolchain; m68k-amiga-elf solo acepta ABI de pila. */
+#if defined(__ELF__)
+#define __ASM_REG_PARM(reg)
+#else
+#define __ASM_REG_PARM(reg) asm(reg)
+#endif
+
 #define __unused __attribute__((unused))
 #define __constfunc __attribute__((const))
 #define __packed __attribute__((packed))

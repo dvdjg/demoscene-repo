@@ -53,9 +53,9 @@ static __code CopListT *cp;
 
 /* Worst case: ~5 words per half-pixel pair + 1 word RTS (see `MakeUVMapRenderCode`). */
 #define UVMapRenderSize (WIDTH * HEIGHT / 2 * 10 + 2)
-static __code void (*UVMapRender)(u_char *chunky asm("a0"),
-                                  u_char *textureHi asm("a1"),
-                                  u_char *textureLo asm("a2"));
+static __code void (*UVMapRender)(u_char *chunky __ASM_REG_PARM("a0"),
+                                  u_char *textureHi __ASM_REG_PARM("a1"),
+                                  u_char *textureLo __ASM_REG_PARM("a2"));
 
 static void ChunkyToPlanar(PixmapT *input, BitmapT *output);
 

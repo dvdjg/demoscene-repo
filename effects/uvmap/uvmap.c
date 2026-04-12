@@ -39,9 +39,9 @@ static CopInsPairT *bplptr;
 #define UVMapRenderSize (WIDTH * HEIGHT / 2 * 10 + 2)
 /* Runtime-generated function. Equivalent C would iterate uvmap and assemble
  * pixels per nibble/byte, but self-modified machine code is faster on 68000. */
-void (*UVMapRender)(u_short *chunkyEnd asm("a0"),
-                    u_short *textureHi asm("a1"),
-                    u_short *textureLo asm("a2"));
+void (*UVMapRender)(u_short *chunkyEnd __ASM_REG_PARM("a0"),
+                    u_short *textureHi __ASM_REG_PARM("a1"),
+                    u_short *textureLo __ASM_REG_PARM("a2"));
 
 /*
  * PixelHi / PixelLo — lookup tables: 4-bit colour index → two u_short patterns.
@@ -147,7 +147,7 @@ static struct {
  * Final phases patch Copper MOVEs for BPLxPT. See large comment block inside function.
  */
 static void ChunkyToPlanar(void) {
-  register void **bpl asm("a0") = c2p.bpl;
+  register void **bpl __ASM_REG_PARM("a0") = c2p.bpl;
 
   /*
    * Our chunky buffer of size (WIDTH/2, HEIGHT/2) is stored in bpl[0].

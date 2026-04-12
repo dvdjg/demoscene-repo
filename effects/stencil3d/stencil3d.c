@@ -225,8 +225,8 @@ static __code short pattern_shade[16] = {
  * planes[DEPTH] is the shared single-bitplane buffer.
  */
 static void DrawObject(Object3D *object, void **planes,
-                       CustomPtrT custom_ asm("a6")) {
-  register SortItemT *item asm("a3") = object->visibleFace;
+                       CustomPtrT custom_ __ASM_REG_PARM("a6")) {
+  register SortItemT *item __ASM_REG_PARM("a3") = object->visibleFace;
   void *_objdat = object->objdat;
 
   custom_->bltafwm = -1;
@@ -236,7 +236,7 @@ static void DrawObject(Object3D *object, void **planes,
     short ii = item->index;
 
     {
-      register short *index asm("a4") = (short *)&FACE(ii)->count;
+      register short *index __ASM_REG_PARM("a4") = (short *)&FACE(ii)->count;
       short m = (*index++) - 1;
 
       do {
@@ -329,7 +329,7 @@ static void DrawObject(Object3D *object, void **planes,
       {
         short minX, minY, maxX, maxY;
 
-        register short *index asm("a4") = (short *)&FACE(ii)->count;
+        register short *index __ASM_REG_PARM("a4") = (short *)&FACE(ii)->count;
         short m = (*index++) - 2;
         short *vertex;
 

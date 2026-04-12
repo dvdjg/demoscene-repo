@@ -63,6 +63,9 @@ compatible with AmigaOS. The bootloader will just crash!
 
 ## Compiling source code
 
+**Toolchain default (Bartman / C++):** from the repo root, prefer  
+`bash tools/with-demoscene-env.sh make` (or the VS Code tasks): this tries the **Amiga C/C++ Compile, Debug & Profile** extension (`m68k-amiga-elf`) first, then the Linux `.deb` toolchain. **Debug vs release** and **C++23** (lightweight, no RTTI/exceptions) are described in **[TOOLCHAIN.md](./TOOLCHAIN.md)**. To force only the Linux `.deb` environment, create an empty file `.force-linux-demoscene-toolchain` in the repo root.
+
 Using terminal change directory to cloned repository and issue `make` command.
 If your build process fails, then:
 

@@ -666,6 +666,11 @@ codelen_order: /* Order of code lengths for the code length alphabet. */
         /* a4 = output, a5 = input, all regs preserved
          * a6 = *end* of storage area (only if OPT_STORAGE_OFFSTACK) */
 ENTRY(Inflate)
+#if defined(__ELF__)
+        /* C ABI: Inflate(input, output) → a4= input, a5= output (ver include/inflate.h) */
+        move.l 4(%sp),%a4
+        move.l 8(%sp),%a5
+#endif
         movem.l SAVE_RESTORE_REGS,-(aS)
 
         /* Build the <length> base/extra-bits table */

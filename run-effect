@@ -16,7 +16,7 @@ Uso: run-effect [opciones] <nombre-efecto> [acción]
 Acciones:
   run        Compila si hace falta y ejecuta el efecto (fs-uae + tmux). Por defecto.
   debug      Compila y arranca fs-uae + m68k-amigaos-gdb dentro de tmux (depuración en terminal).
-  gdbserver  Compila y arranca el servidor de depuración en localhost:8888 (mismo comando que
+  gdbserver  Compila y arranca el servidor de depuración en localhost:2345 (mismo comando que
              la tarea «gdbserver» de VS Code; úsalo con la configuración «Amiga GDB»).
   build      Solo compila (make).
   clean      make clean en el directorio del efecto.

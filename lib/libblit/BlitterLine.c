@@ -93,7 +93,7 @@ void BlitterLineSetupFull(const BitmapT *bitmap, u_short plane,
  * BlitterLine — kick one line after SetupFull. Computes octant, SIGNFLAG, error terms,
  * BLTSIZE = (dx<<6)+66 (66 = min blit height for line mode per HRM).
  */
-void BlitterLine(short x1 asm("d2"), short y1 asm("d3"), short x2 asm("d4"), short y2 asm("d5")) {
+void BlitterLine(short x1 __ASM_REG_PARM("d2"), short y1 __ASM_REG_PARM("d3"), short x2 __ASM_REG_PARM("d4"), short y2 __ASM_REG_PARM("d5")) {
   u_char *data = line->data;
   u_short bltcon1 = line->bltcon1;
   short dx, dy, derr;

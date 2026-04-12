@@ -28,10 +28,10 @@ void CircleEdge(const BitmapT *bitmap, int plane, short x0, short y0, short r) {
   short f = 1 - r;
   short ddF_x = 0;
   short ddF_y = -(r << 1);
-  register int x asm("d6") = 0;
-  register int y asm("d7") = r;
-  register int q0 asm("a3");
-  register int q1 asm("a4");
+  register int x __ASM_REG_PARM("d6") = 0;
+  register int y __ASM_REG_PARM("d7") = r;
+  register int q0 __ASM_REG_PARM("a3");
+  register int q1 __ASM_REG_PARM("a4");
   int q2;
   int q3;
   u_char dot;

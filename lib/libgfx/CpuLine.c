@@ -45,10 +45,10 @@ void CpuLineSetup(const BitmapT *bitmap, u_short plane) {
  * - d0..d3 carry endpoints (xs,ys,xe,ye) for call ABI friendliness and speed.
  * - a0 holds running destination pointer (`pixels`) in inner loops.
  */
-void CpuLine(short xs asm("d0"), short ys asm("d1"),
-             short xe asm("d2"), short ye asm("d3"))
+void CpuLine(short xs __ASM_REG_PARM("d0"), short ys __ASM_REG_PARM("d1"),
+             short xe __ASM_REG_PARM("d2"), short ye __ASM_REG_PARM("d3"))
 {
-  register void *pixels asm("a0") = line.pixels;
+  void *pixels = line.pixels;
   short stride = line.stride;
   /* One-hot bit inside current destination word (bit 15 = leftmost pixel). */
   u_short color;
@@ -102,7 +102,7 @@ void CpuLine(short xs asm("d0"), short ys asm("d1"),
            */
           asm("rolw  #1,%0\n"
               "bccs  . +4\n"
-              "subql #2,%1\n" : "+r" (color), "+r" (pixels));
+              "subql #2,%1\n" : "+d" (color), "+a" (pixels));
         }
 
         pixels += stride;
@@ -128,7 +128,7 @@ void CpuLine(short xs asm("d0"), short ys asm("d1"),
            */
           asm("rorw  #1,%0\n"
               "bccs  . +4\n"
-              "addql #2,%1\n" : "+r" (color), "+r" (pixels));
+              "addql #2,%1\n" : "+d" (color), "+a" (pixels));
           dg -= dg1;
         }
 
@@ -158,7 +158,7 @@ void CpuLine(short xs asm("d0"), short ys asm("d1"),
 
         asm("rolw  #1,%0\n"
             "bccs  . +4\n"
-            "subql #2,%1\n" : "+r" (color), "+r" (pixels));
+            "subql #2,%1\n" : "+d" (color), "+a" (pixels));
         /*
          * Same rotate-left primitive as case 1.
          * This stays in asm (instead of helper C function) to keep the inner loop
@@ -178,7 +178,7 @@ void CpuLine(short xs asm("d0"), short ys asm("d1"),
 
         asm("rorw  #1,%0\n"
             "bccs  . +4\n"
-            "addql #2,%1\n" : "+r" (color), "+r" (pixels));
+            "addql #2,%1\n" : "+d" (color), "+a" (pixels));
         /*
          * Same rotate-right primitive as case 2; branch-on-carry encodes
          * "crossed 16-bit word boundary?" with no explicit C-level condition.

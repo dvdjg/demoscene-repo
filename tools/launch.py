@@ -4,12 +4,24 @@ import argparse
 import os
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
-from libtmux import Server, Session, exc
+
+try:
+    from libtmux import Server, Session, exc
+except ImportError:
+    print(
+        'Falta el paquete Python "libtmux". Instálalo en el mismo intérprete que usa Make '
+        '(en Windows suele ser C:\\Python3xx\\python.exe):\n'
+        '  python -m pip install -r requirements.txt\n'
+        'o al menos: python -m pip install libtmux',
+        file=sys.stderr)
+    raise SystemExit(1) from None
 
 
 def WaitForTcpPort(host, port, timeout=90.0):
@@ -33,12 +45,142 @@ def HerePath(*components):
 SOCKET = 'fsuae'
 SESSION = 'fsuae'
 GDBSERVER = 'uaedbg.py'
-REMOTE = 'localhost:8888'
+REMOTE = 'localhost:2345'
 TMUX_CONF = HerePath('.tmux.conf')
+
+
+def _parse_uae_config(text):
+    out = {}
+    for raw in text.replace('\r\n', '\n').split('\n'):
+        line = raw.strip()
+        if not line or line.startswith(';'):
+            continue
+        if '=' not in line:
+            continue
+        k, _, v = line.partition('=')
+        out[k.strip()] = v.strip()
+    return out
+
+
+def _stringify_uae_config(cfg):
+    return ''.join(f'{k}={v}\r\n' for k, v in cfg.items())
+
+
+def FindBartmanWinUAEGdb():
+    """
+    winuae-gdb.exe del paquete Bartman (Amiga Debug): suele estar en el mismo
+    árbol que m68k-amiga-elf-gcc (p. ej. .../bin/win32/winuae-gdb.exe).
+    Override: WINUAE_GDB_EXE=ruta\\winuae-gdb.exe
+    """
+    override = os.environ.get('WINUAE_GDB_EXE', '').strip()
+    if override and Path(override).is_file():
+        return Path(override).resolve()
+    if sys.platform != 'win32':
+        return None
+    for tool in (
+            'm68k-amiga-elf-gcc',
+            'm68k-amiga-elf-gdb',
+            'm68k-amigaos-gcc',
+            'm68k-amigaos-gdb',
+    ):
+        w = shutil.which(tool)
+        if not w:
+            continue
+        p = Path(w).resolve()
+        for parent in p.parents:
+            cand = parent / 'winuae-gdb.exe'
+            if cand.is_file():
+                return cand
+    return None
+
+
+def _winuae_debugging_trigger(host_executable):
+    """Nombre del .exe en el Amiga (p. ej. cathedral.exe.dbg -> :cathedral.exe)."""
+    name = Path(host_executable).name
+    if name.endswith('.exe.dbg'):
+        return ':' + name[:-4]
+    if name.endswith('.dbg'):
+        return ':' + name[:-4]
+    if not name.lower().endswith('.exe'):
+        return ':' + name + '.exe'
+    return ':' + name
+
+
+def LaunchWinUAEBartmanGdbserver(winuae_exe, args):
+    """
+    Windows: WinUAE de Bartman expone gdbserver RSP (no el depurador consola
+    de FS-UAE). Puerto por defecto 2345 (como la extensión Amiga Debug / GDB MI).
+    """
+    winuae_dir = winuae_exe.parent
+    floppy_path = Path(args.floppy).resolve()
+    if not floppy_path.is_file():
+        raise SystemExit('%s: file does not exist!' % floppy_path)
+    floppy = floppy_path.as_posix()
+
+    cfg = {}
+    default_uae = winuae_dir / 'default.uae'
+    if default_uae.is_file():
+        cfg = _parse_uae_config(
+            default_uae.read_text(encoding='utf-8', errors='replace'))
+    for k in list(cfg.keys()):
+        if k in ('filesystem', 'filesystem2', 'filesystem3'):
+            del cfg[k]
+        elif k.startswith('uaehf'):
+            del cfg[k]
+
+    if args.model == 'A1200':
+        cfg['quickstart'] = 'a1200,0'
+    else:
+        cfg['quickstart'] = 'a500,1'
+
+    # Sin panel de configuración de WinUAE: arranque directo a emulación (como default.uae
+    # de Bartman). use_gui=yes fuerza el modo «GUI» del emulador.
+    cfg['use_gui'] = 'no'
+    cfg['win32.start_not_captured'] = 'yes'
+    cfg['win32.nonotificationicon'] = 'yes'
+    cfg['boot_rom_uae'] = 'min'
+    cfg['cpu_cycle_exact'] = 'true'
+    cfg['cpu_memory_cycle_exact'] = 'true'
+    cfg['blitter_cycle_exact'] = 'true'
+    cfg['cycle_exact'] = 'true'
+    cfg['input.config'] = '1'
+    cfg['input.1.keyboard.0.friendlyname'] = 'WinUAE keyboard'
+    cfg['input.1.keyboard.0.name'] = 'NULLKEYBOARD'
+    cfg['input.1.keyboard.0.empty'] = 'false'
+    cfg['input.1.keyboard.0.disabled'] = 'false'
+    cfg['input.1.keyboard.0.button.41.GRAVE'] = 'SPC_SINGLESTEP.0'
+    cfg['input.1.keyboard.0.button.201.PREV'] = 'SPC_WARP.0'
+    cfg['floppy0'] = floppy
+    cfg['debugging_features'] = 'gdbserver'
+    cfg['debugging_trigger'] = _winuae_debugging_trigger(args.executable)
+    cfg.pop('statefile', None)
+
+    fd, tmp_path = tempfile.mkstemp(suffix='.uae', prefix='demoscene-')
+    os.close(fd)
+    Path(tmp_path).write_text(
+        _stringify_uae_config(cfg), encoding='utf-8')
+
+    popen_kw = {
+        'cwd': str(winuae_dir),
+        'stdin': subprocess.DEVNULL,
+    }
+    subprocess.Popen(
+        [str(winuae_exe), '-portable', '-f', tmp_path],
+        **popen_kw)
+    print(
+        'WinUAE (Bartman): {}'.format(winuae_exe),
+        flush=True)
+
+
+def TmuxAvailable():
+    """Python en Windows usa CreateProcess: hace falta tmux.exe en el PATH."""
+    return shutil.which('tmux') is not None
 
 
 def CleanupStaleEmulator():
     """Cierra sesiones tmux/fs-uae previas para evitar quedar enganchado."""
+    if not TmuxAvailable():
+        return
     top = os.getenv('TOPDIR', '').strip()
     tmux_cmd = ['tmux', '-L', SOCKET, 'kill-server']
     if top:
@@ -111,7 +253,8 @@ class SOCAT(Launchable):
 
 class GDB(Launchable):
     def __init__(self):
-        super().__init__('gdb', 'm68k-amigaos-gdb')
+        gdb = os.environ.get('M68K_GDB', 'm68k-amigaos-gdb')
+        super().__init__('gdb', gdb)
         # gdbtui & cgdb output is garbled if there is no delay
         self.cmd = 'sleep 0.5 && ' + self.cmd
 
@@ -127,9 +270,66 @@ class GDB(Launchable):
             program]
 
 
+def LaunchWithoutTmux(uae, args):
+    """
+    Windows / entornos sin tmux en el PATH: lanza uaedbg.py directamente.
+    En Windows, si hay winuae-gdb.exe de Bartman, gdbserver ya se resolvió
+    antes (salida temprana en __main__) con WinUAE nativo.
+    Serial/parallel vía socat no se arrancan (no suelen existir en Windows).
+    """
+    top = os.getenv('TOPDIR', '').strip()
+    if not top:
+        raise SystemExit(
+            'TOPDIR no está definido; ejecuta launch.py desde Make (export TOPDIR).')
+
+    if args.debug == 'gdb':
+        print(
+            'Modo -d gdb requiere tmux (varias ventanas). Instala tmux en el PATH '
+            '(p. ej. MSYS2: pacman -S tmux) o enlaza gdb a mano contra el gdbserver.',
+            file=sys.stderr)
+        raise SystemExit(1)
+
+    script = Path(top) / 'tools' / GDBSERVER
+    if not script.is_file():
+        raise SystemExit('No existe %s' % script)
+
+    argv = [sys.executable, str(script.resolve())] + uae.options
+    env = os.environ.copy()
+    pylib = str(Path(top) / 'tools' / 'pylib')
+    env['PYTHONPATH'] = pylib + os.pathsep + env.get('PYTHONPATH', '')
+
+    popen_kw = {
+        'cwd': top,
+        'env': env,
+        'stdin': subprocess.DEVNULL,
+    }
+    # Consola interactiva del depurador integrado (sin -g): ventana aparte en Windows.
+    if sys.platform == 'win32' and args.debug != 'gdbserver':
+        popen_kw['creationflags'] = getattr(
+            subprocess, 'CREATE_NEW_CONSOLE', 0)
+
+    subprocess.Popen(argv, **popen_kw)
+
+    if args.debug == 'gdbserver':
+        host, port = REMOTE.split(':')
+        if WaitForTcpPort(host, int(port)):
+            print(
+                'Listening for gdb connection at localhost:{}'.format(port),
+                flush=True)
+        else:
+            raise SystemExit(
+                'timeout waiting for gdbserver on {}:{}'.format(host, port))
+    else:
+        print(
+            'uaedbg iniciado sin tmux (sin redirección serial/parallel tipo socat).',
+            flush=True)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Launch effect in FS-UAE emulator.')
+        description=(
+            'Lanzar el efecto en emulador: FS-UAE (Linux/uaedbg) o, en Windows '
+            'con toolchain Bartman, WinUAE (winuae-gdb.exe) para depuración.'))
     parser.add_argument('-f', '--floppy', metavar='ADF', type=str,
                         help='Floppy disk image in ADF format.')
     parser.add_argument('-e', '--executable', metavar='EXE', type=str,
@@ -153,6 +353,23 @@ if __name__ == '__main__':
     if args.debug and not Path(args.executable).is_file():
         raise SystemExit('%s: file does not exist!' % args.executable)
 
+    # Windows + toolchain Bartman: WinUAE con gdbserver RSP (no FS-UAE ni uaedbg).
+    if args.debug == 'gdbserver' and sys.platform == 'win32':
+        winuae_gdb = FindBartmanWinUAEGdb()
+        if winuae_gdb is not None:
+            host, port = REMOTE.rsplit(':', 1)
+            gdb_port = int(port)
+            LaunchWinUAEBartmanGdbserver(winuae_gdb, args)
+            if WaitForTcpPort(host, gdb_port):
+                print(
+                    'Listening for gdb connection at localhost:{}'.format(port),
+                    flush=True)
+            else:
+                raise SystemExit(
+                    'timeout waiting for gdbserver on {}:{}'.format(host,
+                                                                     port))
+            raise SystemExit(0)
+
     uae = FSUAE()
     uae.configure(floppy=args.floppy,
                   model=args.model,
@@ -168,6 +385,10 @@ if __name__ == '__main__':
     if args.debug == 'gdb':
         debugger = GDB()
         debugger.configure(args.executable)
+
+    if not TmuxAvailable():
+        LaunchWithoutTmux(uae, args)
+        raise SystemExit(0)
 
     CleanupStaleEmulator()
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import subprocess
 import pygments
 
@@ -16,6 +17,8 @@ from pyparsing.exceptions import ParseException
 from blessings import Terminal
 
 term = Terminal()
+
+OBJDUMP = os.environ.get('M68K_OBJDUMP', 'm68k-amigaos-objdump')
 
 Reloc = namedtuple('Reloc', 'sect addr typ sym')
 Symbol = namedtuple('Symbol', 'sect addr name')
@@ -477,7 +480,7 @@ class ObjectInfo:
             self.calc_functions()
 
     def read_sections(self, path):
-        output = subprocess.run(['m68k-amigaos-objdump', '-h', path],
+        output = subprocess.run([OBJDUMP, '-h', path],
                                 capture_output=True)
 
         secsize = {}
@@ -494,7 +497,7 @@ class ObjectInfo:
 
     def read_symbols(self, path):
         output = subprocess.run(
-                ['m68k-amigaos-objdump', '-t', path], capture_output=True)
+                [OBJDUMP, '-t', path], capture_output=True)
 
         symbols = []
 
@@ -510,7 +513,7 @@ class ObjectInfo:
 
     def read_stabs(self, path):
         output = subprocess.run(
-                ['m68k-amigaos-objdump', '-G', path], capture_output=True)
+                [OBJDUMP, '-G', path], capture_output=True)
         secmap = {'FUN': '.text', 'STSYM': '.data', 'LCSYM': '.bss'}
 
         currfn = None
@@ -583,7 +586,7 @@ class ObjectInfo:
             self._fns.append((s_fn, s_addr, e_addr))
 
     def read_relocs(self, path):
-        output = subprocess.run(['m68k-amigaos-objdump', '-r', path],
+        output = subprocess.run([OBJDUMP, '-r', path],
                                 capture_output=True)
 
         relocs = []
@@ -677,7 +680,7 @@ class Disassembler:
 
     def _read_disass(self, start_addr, stop_addr):
         output = subprocess.run(
-                ['m68k-amigaos-objdump', '-d', '-C',
+                [OBJDUMP, '-d', '-C',
                  # '--insn-width=10',
                  f'--start-address={start_addr}',
                  f'--stop-address={stop_addr}',

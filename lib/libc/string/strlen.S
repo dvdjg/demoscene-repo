@@ -12,6 +12,9 @@
 
 # [a0] string
 ENTRY(strlen)
+#if defined(__ELF__)
+        move.l 4(%sp),%a0
+#endif
         /*
          * Trick:
          *   d0 = ~start_ptr;

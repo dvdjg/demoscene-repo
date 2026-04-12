@@ -183,7 +183,7 @@ static void TransformVertices(Object3D *object) {
  * the atlas (quantized); x supplies ASH shift; y advances dst by y * (WIDTH/8*DEPTH).
  */
 static void DrawObject(Object3D *object, void *src, void *dst,
-                       CustomPtrT custom_ asm("a6"))
+                       CustomPtrT custom_ __ASM_REG_PARM("a6"))
 {
   void *_objdat = object->objdat;
   short *group = object->vertexGroups;

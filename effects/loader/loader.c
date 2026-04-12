@@ -25,8 +25,13 @@
 #include "data/loader.c"
 
 /* Embedded ProTracker replay assets (linked from packed resources). */
+#if defined(__ELF__)
+extern u_char _LoaderModule[];
+extern u_char _LoaderSamples[];
+#else
 extern u_char LoaderModule[];
 extern u_char LoaderSamples[];
+#endif
 
 /* Runtime framebuffer (CHIP) shown during loading. */
 static __code BitmapT *screen;
@@ -58,7 +63,11 @@ static __code CopListT *cp;
  */
 static void Init(void) {
   PtInstallCIA();
+#if defined(__ELF__)
+  PtInit(_LoaderModule, _LoaderSamples, 1);
+#else
   PtInit(LoaderModule, LoaderSamples, 1);
+#endif
   PtEnable = 1;
 
   screen = NewBitmap(WIDTH, HEIGHT, DEPTH, BM_CLEAR);

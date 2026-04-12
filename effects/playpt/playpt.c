@@ -36,7 +36,7 @@ static bool stopped = true;
 
 #ifdef AKLANG
 extern u_int AK_Progress;
-void AK_Generate(void *TmpBuf asm("a1"));
+void AK_Generate(void *TmpBuf __ASM_REG_PARM("a1"));
 #endif
 
 #ifdef DELTA

@@ -80,6 +80,10 @@ if demoscene_config $@; then
 
     echo "Demoscene build environment in $(pwd) configured for ${MODEL}!"
     export DEMOSCENE_ROOT=$(pwd)
+    {
+      printf 'DEMOSCENE_ROOT := %s\n' "${DEMOSCENE_ROOT}"
+      printf 'M68K_TRIPLET := m68k-amigaos\n'
+    } > "${DEMOSCENE_ROOT}/.demoscene-env.mk"
   fi
 else
   echo ""

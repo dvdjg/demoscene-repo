@@ -8,4 +8,4 @@ include $(TOPDIR)/build/effect.mk
 
 %.c: %.gif
 	@echo "[ANIM] $(DIR)$< -> $(DIR)$@"
-	$(PYTHON3) data/gen-anim.py $< > $@
+	$(PYTHON3) data/gen-anim.py $< > $@ || (rm -f $@ && exit 1)

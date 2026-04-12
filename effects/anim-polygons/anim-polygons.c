@@ -8,6 +8,7 @@
 #include <2d.h>
 #include <blitter.h>
 #include <copper.h>
+#include <custom.h>
 #include <effect.h>
 #include <fx.h>
 #include <line.h>
@@ -65,7 +66,7 @@ static void Kill(void) {
 }
 
 static inline void DrawEdge(short *coords, void *dst,
-                            CustomPtrT custom_ asm("a6")) {
+                            CustomPtrT custom_ __ASM_REG_PARM("a6")) {
   static __data_chip short tmp;
 
   short bltcon0, bltcon1, bltsize, bltbmod, bltamod;
@@ -140,7 +141,7 @@ static inline void DrawEdge(short *coords, void *dst,
       : "=d" (x), "=r" (y), "+a" (data) \
       : "i" (WIDTH));
 
-static void DrawFrame(void *dst, CustomPtrT custom_ asm("a6")) {
+static void DrawFrame(void *dst, CustomPtrT custom_ __ASM_REG_PARM("a6")) {
   static __code Point2D points[128];
   short *data = dancing_frame[current_frame];
   short n;

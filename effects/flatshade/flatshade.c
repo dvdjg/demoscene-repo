@@ -298,9 +298,9 @@ static void TransformVertices(Object3D *object) {
  * OR mask in or clear (NABC|NABNC) so face colour bits paint 4bpp chunky-style.
  */
 static void DrawObject(Object3D *object, void **planes,
-                       CustomPtrT custom_ asm("a6"))
+                       CustomPtrT custom_ __ASM_REG_PARM("a6"))
 {
-  register SortItemT *item asm("a3") = object->visibleFace;
+  register SortItemT *item __ASM_REG_PARM("a3") = object->visibleFace;
   void **scrbpl = &planes[DEPTH];
   void *_objdat = object->objdat;
 
@@ -311,7 +311,7 @@ static void DrawObject(Object3D *object, void **planes,
     short ii = item->index;
 
     {
-      register short *index asm("a4") = (short *)&FACE(ii)->count;
+      register short *index __ASM_REG_PARM("a4") = (short *)&FACE(ii)->count;
       short m = (*index++) - 1;
 
       do {
@@ -403,7 +403,7 @@ static void DrawObject(Object3D *object, void **planes,
       {
         short minX, minY, maxX, maxY;
 
-        register short *index asm("a4") = (short *)&FACE(ii)->count;
+        register short *index __ASM_REG_PARM("a4") = (short *)&FACE(ii)->count;
         short m = (*index++) - 2;
         short *vertex;
 

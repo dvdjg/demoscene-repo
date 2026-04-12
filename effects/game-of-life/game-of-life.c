@@ -273,8 +273,8 @@ static void WireworldSwitch(__attribute__((unused)) const BitmapT *sourceA,
   wireworld_step ^= 1;
 }
 
-static void (*PixelDouble)(u_char *source asm("a0"), u_short *target asm("a1"),
-                           u_short *lut asm("a2"));
+static void (*PixelDouble)(u_char *source __ASM_REG_PARM("a0"), u_short *target __ASM_REG_PARM("a1"),
+                           u_short *lut __ASM_REG_PARM("a2"));
 
 #define PixelDoubleSize (BOARD_WIDTH * BOARD_HEIGHT * 10 + BOARD_HEIGHT * 2 + 6)
 

@@ -8,6 +8,6 @@
 #ifndef __INFLATE_H__
 #define __INFLATE_H__
 
-void Inflate(const void *input asm("a4"), void *output asm("a5"));
+void Inflate(const void *input __ASM_REG_PARM("a4"), void *output __ASM_REG_PARM("a5"));
 
 #endif

@@ -10,6 +10,6 @@
 
 #include <types.h>
 
-u_int Checksum(u_int cksum asm("d0"), u_int *data asm("a0"), ssize_t size asm("d1"));
+u_int Checksum(u_int cksum __ASM_REG_PARM("d0"), u_int *data __ASM_REG_PARM("a0"), ssize_t size __ASM_REG_PARM("d1"));
 
 #endif /* !__CHECKSUM_H__ */

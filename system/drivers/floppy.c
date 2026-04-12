@@ -244,7 +244,7 @@ static SectorT *FindSectorHeader(void *ptr) {
 }
 
 static bool FloppyTrackDecode(FileT *f, short trknum) {
-  register u_int mask asm("d7") = 0x55555555;
+  register u_int mask __ASM_REG_PARM("d7") = 0x55555555;
   u_short *data = (u_short *)f->encoded;
   u_int *buf = (u_int *)f->decoded;
   SectorT *sector;

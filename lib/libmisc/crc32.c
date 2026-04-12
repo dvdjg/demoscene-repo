@@ -68,7 +68,7 @@ static const u_int crc32_table[256] = {
 
 u_int crc32(const u_char *frame, size_t frame_len) {
   u_int crc = 0xFFFFFFFF;
-  register int n asm("d3") = frame_len - 1;
+  register int n __ASM_REG_PARM("d3") = frame_len - 1;
 
   do {
     u_char byte = *frame++;

@@ -14,10 +14,15 @@ include $(TOPDIR)/build/effect.mk
 CLEAN-FILES += data/$(MODULE).smp data/$(MODULE).trk
 
 OBJCOPY-CHIP := --rename-section .data=.datachip,alloc,load,data,contents
+ifdef TOOLCHAIN_ELF
+OBJCOPY_BFD := elf32-m68k
+else
+OBJCOPY_BFD := amiga
+endif
 
 data/%.trk.o: data/%.trk
 	@echo "[OBJCOPY] $(DIR)$< -> $(DIR)$@"
-	$(OBJCOPY) -I binary -O amiga \
+	$(OBJCOPY) -I binary -O $(OBJCOPY_BFD) \
 	  --redefine-sym _binary_data_$(subst -,_,$*)_trk_start=_LoaderModule \
 	  --redefine-sym _binary_data_$(subst -,_,$*)_trk_end=_LoaderModuleEnd \
 	  --redefine-sym _binary_data_$(subst -,_,$*)_trk_size=_LoaderModuleSize \
@@ -25,7 +30,7 @@ data/%.trk.o: data/%.trk
 
 data/%.smp.o: data/%.smp
 	@echo "[OBJCOPY] $(DIR)$< -> $(DIR)$@"
-	$(OBJCOPY) $(OBJCOPY-CHIP) -I binary -O amiga \
+	$(OBJCOPY) $(OBJCOPY-CHIP) -I binary -O $(OBJCOPY_BFD) \
 	  --redefine-sym _binary_data_$(subst -,_,$*)_smp_start=_LoaderSamples \
 	  --redefine-sym _binary_data_$(subst -,_,$*)_smp_end=_LoaderSamplesEnd \
 	  --redefine-sym _binary_data_$(subst -,_,$*)_smp_size=_LoaderSamplesSize \

@@ -232,10 +232,10 @@ static void InitSide(SideT *s, CornerT *pa, CornerT *pb) {
  * u,v across the span between left/right edges, and writes chunky pixels. Register
  * ABI fixed for hand-tuned assembly.
  */
-void DrawTriPart(u_char *line asm("a0"), short *texture asm("a1"),
-                 SideT *left asm("a2"), SideT *right asm("a3"),
-                 int du asm("d2"), int dv asm("d3"),
-                 int ys asm("d6"), int ye asm("d7"));
+void DrawTriPart(u_char *line __ASM_REG_PARM("a0"), short *texture __ASM_REG_PARM("a1"),
+                 SideT *left __ASM_REG_PARM("a2"), SideT *right __ASM_REG_PARM("a3"),
+                 int du __ASM_REG_PARM("d2"), int dv __ASM_REG_PARM("d3"),
+                 int ys __ASM_REG_PARM("d6"), int ye __ASM_REG_PARM("d7"));
 
 /* Sort by y, compute constant ∂u/∂x, ∂v/∂x for affine mapping, then 1–2 DrawTriPart. */
 static void DrawTriangle(CornerT *p0, CornerT *p1, CornerT *p2, int color) {
@@ -377,7 +377,7 @@ static void DrawObject(Object3D *object) {
 
     while ((f = *group++)) {
       if (FACE(f)->flags >= 0) {
-        register short *index asm("a3") = (short *)(FACE(f)->indices);
+        register short *index __ASM_REG_PARM("a3") = (short *)(FACE(f)->indices);
         short n = FACE(f)->count - 1;
         CornerT *corner = corners;
         int color;

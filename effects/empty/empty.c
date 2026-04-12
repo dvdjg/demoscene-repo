@@ -35,6 +35,8 @@ static void Kill(void) {
 
 /* Optional asm/C optimized hook used for microbenchmarks or experiments. */
 extern void OptimizedFunction(void);
+/* C++23 smoke test (cxxsmoke.cpp); ver TOOLCHAIN.md */
+extern void DemosceneCxxSmoke(void);
 
 /* Render — minimal frame loop:
  * 1) animate COLOR0 directly,
@@ -44,6 +46,7 @@ static void Render(void) {
   /* Persistent counter so color cycles every frame. */
   static u_short c = 0;
   custom->color[0] = c++;
+  DemosceneCxxSmoke();
   OptimizedFunction();
   TaskWaitVBlank();
 }

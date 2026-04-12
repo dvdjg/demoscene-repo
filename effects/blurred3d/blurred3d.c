@@ -199,7 +199,7 @@ static void DrawLine(short x0, short y0, short x1, short y1) {
   }
 }
 
-static void DrawObject(Object3D *object, CustomPtrT custom_ asm("a6")) {
+static void DrawObject(Object3D *object, CustomPtrT custom_ __ASM_REG_PARM("a6")) {
   void *outbuf = carry->planes[0];
   void *tmpbuf = scratchpad->planes[0];
 
@@ -220,7 +220,7 @@ static void DrawObject(Object3D *object, CustomPtrT custom_ asm("a6")) {
         short maxY = -32768;
 
         {
-          register short *index asm("a3") = (short *)(FACE(f)->indices);
+          register short *index __ASM_REG_PARM("a3") = (short *)(FACE(f)->indices);
           short n = FACE(f)->count - 1;
 
           do {

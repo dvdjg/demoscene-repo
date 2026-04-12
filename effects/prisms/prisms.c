@@ -213,7 +213,7 @@ static void RotatePrism(PrismT *prism, short rotate) {
 static void ClearSpanInfo(void) {
   SpanInfoT *li = spanInfo;
   short n = HEIGHT;
-  register short z asm("d1") = 0x7fff;
+  register short z __ASM_REG_PARM("d1") = 0x7fff;
   short *wp = (short *)li;
   int *lp;
 

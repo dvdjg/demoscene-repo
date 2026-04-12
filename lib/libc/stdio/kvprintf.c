@@ -63,7 +63,7 @@ const char hex2ascii_upper[] = "0123456789abcdefghijklmnopqrstuvwxyz";
  * The buffer pointed to by `nbuf' must have length >= MAXNBUF.
  */
 static char *
-ksprintn(char *nbuf, u_long num asm("d2"), int base asm("d3"), int *lenp, int upper)
+ksprintn(char *nbuf, u_long num __ASM_REG_PARM("d2"), int base __ASM_REG_PARM("d3"), int *lenp, int upper)
 {
   const char *hex2ascii = upper ? hex2ascii_upper : hex2ascii_lower;
   char *p;

@@ -13,8 +13,8 @@
  * bplSize: offset between one row in one bpl and the next bpl in bytes
  */
 
-void c2p_1x1_4(void *chunky asm("a0"), void *bpls asm("a1"),
-               short width asm("d0"), short height asm("d1"),
-               int bplSize asm("d5"));
+void c2p_1x1_4(void *chunky __ASM_REG_PARM("a0"), void *bpls __ASM_REG_PARM("a1"),
+               short width __ASM_REG_PARM("d0"), short height __ASM_REG_PARM("d1"),
+               int bplSize __ASM_REG_PARM("d5"));
 
 #endif

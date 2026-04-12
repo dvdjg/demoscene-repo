@@ -204,7 +204,7 @@ static inline void CopperLine(u_char *pos, short x1, short y2, int delta) {
   if (y2 > FAR_Y) {
     short n = y2 - FAR_Y + 1;
     int x = ((x1 + DIWHP) / 2) << 16;
-    register u_char one asm("d7") = 1;
+    register u_char one __ASM_REG_PARM("d7") = 1;
 
     while (--n >= 0) {
       *pos = swap16(x) | one;

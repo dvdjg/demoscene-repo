@@ -13,6 +13,10 @@
 # [a0] fromaddr
 # [a1] toaddr
 ENTRY(strcpy)
+#if defined(__ELF__)
+        move.l 4(%sp),%a1
+        move.l 8(%sp),%a0
+#endif
         move.l  a1,d0
 .Loop:  move.b  (a0)+,(a1)+     /* copy a byte */
         jne     .Loop           /* copied non-null, keep going */

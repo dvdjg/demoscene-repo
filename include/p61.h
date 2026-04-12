@@ -90,9 +90,9 @@ extern P61_ChannelBlock P61_temp[4];
  * @result 0 if success, non-zero otherwise
  */
 
-int P61_Init(void *Module asm("a0"),
-              void *Samples asm("a1"),
-              void *Buffer asm("a2"));
+int P61_Init(void *Module __ASM_REG_PARM("a0"),
+              void *Samples __ASM_REG_PARM("a1"),
+              void *Buffer __ASM_REG_PARM("a2"));
 
 /**
  * @brief Main entry point from CIA/VB int or frame loop.
@@ -113,7 +113,7 @@ typedef struct {
   short RepLen;        /* d4 */
 } P61_OscData;
 
-bool P61_Osc(P61_ChannelBlock *channel asm("a0"), P61_OscData *data asm("a3"));
+bool P61_Osc(P61_ChannelBlock *channel __ASM_REG_PARM("a0"), P61_OscData *data __ASM_REG_PARM("a3"));
 
 /**
  * @brief Jump to a specific position in the song. Starts from the beginning if
@@ -123,7 +123,7 @@ bool P61_Osc(P61_ChannelBlock *channel asm("a0"), P61_OscData *data asm("a3"));
  *                 limits)
  */
 
-void P61_SetPosition(u_char Position asm("d0"));
+void P61_SetPosition(u_char Position __ASM_REG_PARM("d0"));
 
 /**
  * @brief Stop the music.

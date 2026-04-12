@@ -64,7 +64,7 @@ static void Kill(void) {
  * edges are touched twice (cancel); silhouette edges keep a non-zero edgeColor.
  */
 static void UpdateEdgeVisibilityConvex(Object3D *object) {
-  register char s asm("d2") = 1;
+  register char s __ASM_REG_PARM("d2") = 1;
 
   void *_objdat = object->objdat;
   short *group = object->faceGroups;
@@ -72,10 +72,10 @@ static void UpdateEdgeVisibilityConvex(Object3D *object) {
 
   do {
     while ((f = *group++)) {
-      register char flags asm("d3") = FACE(f)->flags;
+      register char flags __ASM_REG_PARM("d3") = FACE(f)->flags;
 
       if (flags >= 0) {
-        register short *index asm("a3") = (short *)(&FACE(f)->count);
+        register short *index __ASM_REG_PARM("a3") = (short *)(&FACE(f)->count);
         short vertices = *index++ - 3;
         short i;
 
@@ -169,7 +169,7 @@ static void TransformVertices(Object3D *object) {
  * base + k * bplSize for bits 0..3 of edgeColor (line drawn only if bit set).
  */
 static void DrawObject(void *planes, Object3D *object,
-                       CustomPtrT custom_ asm("a6"))
+                       CustomPtrT custom_ __ASM_REG_PARM("a6"))
 {
   void *_objdat = object->objdat;
   short *group = object->edgeGroups;

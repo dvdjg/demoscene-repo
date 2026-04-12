@@ -230,7 +230,7 @@ static void TransformVertices(Object3D *object) {
 #define NPOINTS (POINTS_PER_TURN * TURNS)
 
 static void GenCircularDoubleHelix(Node3D *node, short phi_offset) {
-  register short radius asm("a3") = fx12f(2.5);
+  register short radius __ASM_REG_PARM("a3") = fx12f(2.5);
   u_short alpha; /* 0..65535 */
   short i;
 
@@ -344,7 +344,7 @@ static BobDescT bobdesc[16] = {
 #define MINZ -6144
 
 static void DrawFlares(Object3D *object, void *src, void *dst,
-                       CustomPtrT custom_ asm("a6"))
+                       CustomPtrT custom_ __ASM_REG_PARM("a6"))
 {
   void *_objdat = object->objdat;
   void *_bobdesc = bobdesc;
@@ -408,7 +408,7 @@ static void DrawFlares(Object3D *object, void *src, void *dst,
 }
 
 static void DrawLinks(Object3D *object, void *dst,
-                      CustomPtrT custom_ asm("a6"))
+                      CustomPtrT custom_ __ASM_REG_PARM("a6"))
 {
   void *_objdat = object->objdat;
   short *group = object->faceGroups;

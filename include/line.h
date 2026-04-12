@@ -14,8 +14,8 @@
 #include "gfx.h"
 
 void CpuLineSetup(const BitmapT *bitmap, u_short plane);
-void CpuLine(short x1 asm("d0"), short y1 asm("d1"), short x2 asm("d2"), short y2 asm("d3"));
+void CpuLine(short x1 __ASM_REG_PARM("d0"), short y1 __ASM_REG_PARM("d1"), short x2 __ASM_REG_PARM("d2"), short y2 __ASM_REG_PARM("d3"));
 void CpuEdgeSetup(const BitmapT *bitmap, u_short plane);
-void CpuEdge(short x1 asm("d0"), short y1 asm("d1"), short x2 asm("d2"), short y2 asm("d3"));
+void CpuEdge(short x1 __ASM_REG_PARM("d0"), short y1 __ASM_REG_PARM("d1"), short x2 __ASM_REG_PARM("d2"), short y2 __ASM_REG_PARM("d3"));
 
 #endif

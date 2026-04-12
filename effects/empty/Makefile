@@ -1,5 +1,5 @@
 TOPDIR := $(realpath ../..)
 
-SOURCES := empty.c optimized.asm
+SOURCES := empty.c cxxsmoke.cpp optimized.asm
 
 include $(TOPDIR)/build/effect.mk

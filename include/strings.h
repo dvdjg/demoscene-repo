@@ -10,8 +10,8 @@
 
 #include <types.h>
 
-void bcopy(const void *src asm("a0"), void *dst asm("a1"),
-           size_t len asm("d1"));
-void bzero(void *s asm("a0"), size_t n asm("d1"));
+void bcopy(const void *src __ASM_REG_PARM("a0"), void *dst __ASM_REG_PARM("a1"),
+           size_t len __ASM_REG_PARM("d1"));
+void bzero(void *s __ASM_REG_PARM("a0"), size_t n __ASM_REG_PARM("d1"));
 
 #endif

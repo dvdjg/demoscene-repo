@@ -9,4 +9,4 @@ include $(TOPDIR)/build/effect.mk
 
 data/ball.c: data/gen-ball.py
 	@echo "[GEN] $@"
-	$(PYTHON3) $< uvmap > $@
+	$(PYTHON3) $< uvmap > $@ || (rm -f $@ && exit 1)

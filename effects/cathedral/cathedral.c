@@ -47,7 +47,8 @@
  * bpl[4] -> C1
  */
 
-static __code const u_short phase_bltcon0[32][2] = {
+/* Tabla const en .rodata; __code const mezclado con el descriptor del efecto en .text falla en ELF (GCC 14). */
+static const u_short phase_bltcon0[32][2] = {
   {LE_0, EQ_1},
   {LE_1, EQ_1},
   {LE_2, EQ_1},

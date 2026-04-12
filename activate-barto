@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Uso: source activate-barto   (desde la raíz del repo clonado)
+#
+# Configura PATH para el toolchain de la extensión VS Code / Cursor
+# "Amiga C/C++ Compile, Debug & Profile" (BartmanAbyss): m68k-amiga-elf-gcc,
+# vasmm68k_mot, elf2hunk, etc.
+#
+# Opcional: export AMIGA_EXT_WIN32=/ruta/a/.../bin/win32 si no se detecta sola.
+
+function _demoscene_barto_find_win32() {
+  local roots=(
+    "${AMIGA_EXT_WIN32:-}"
+    "${HOME}/.cursor/extensions"
+    "${HOME}/.vscode/extensions"
+  )
+  local d best="" ver="" bestver="0"
+  for root in "${roots[@]}"; do
+    [ -n "${root}" ] && [ -d "${root}" ] || continue
+    for d in "${root}"/bartmanabyss.amiga-debug-*/bin/win32; do
+      [ -d "${d}" ] || continue
+      if [ -x "${d}/opt/bin/m68k-amiga-elf-gcc.exe" ] || [ -x "${d}/opt/bin/m68k-amiga-elf-gcc" ]; then
+        ver="${d%/bin/win32}"
+        ver="${ver##*-}"
+        if [[ "${ver}" > "${bestver}" ]] || [ -z "${best}" ]; then
+          bestver="${ver}"
+          best="${d}"
+        fi
+      fi
+    done
+  done
+  if [ -n "${best}" ]; then
+    printf '%s' "${best}"
+    return 0
+  fi
+  return 1
+}
+
+if ! WIN32="$(_demoscene_barto_find_win32)"; then
+  echo "No se encontró bartmanabyss.amiga-debug (bin/win32). Instala la extensión"
+  echo "o define AMIGA_EXT_WIN32 apuntando a .../bin/win32 de la extensión."
+  return 1 2>/dev/null || exit 1
+fi
+
+export PATH="${WIN32}/opt/bin:${WIN32}:${PATH}"
+export M68K_TRIPLET=m68k-amiga-elf
+export M68K_GDB="${WIN32}/opt/bin/m68k-amiga-elf-gdb"
+# En Windows el .exe es opcional para subprocess si PATHEXT lo resuelve;
+# launch.py añade .exe si hace falta.
+if [ -x "${M68K_GDB}.exe" ]; then
+  export M68K_GDB="${M68K_GDB}.exe"
+fi
+export M68K_OBJDUMP="${WIN32}/opt/bin/m68k-amiga-elf-objdump"
+[ -x "${M68K_OBJDUMP}.exe" ] && export M68K_OBJDUMP="${M68K_OBJDUMP}.exe"
+
+export DEMOSCENE_ROOT="$(pwd)"
+_demoscene_write_env_mk() {
+  {
+    printf 'DEMOSCENE_ROOT := %s\n' "${DEMOSCENE_ROOT}"
+    printf 'M68K_TRIPLET := m68k-amiga-elf\n'
+    printf 'export M68K_GDB := %s\n' "${M68K_GDB}"
+    printf 'export M68K_OBJDUMP := %s\n' "${M68K_OBJDUMP}"
+  } > "${DEMOSCENE_ROOT}/.demoscene-env.mk"
+}
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 no está en PATH (necesario para venv y launch.py)."
+  return 1 2>/dev/null || exit 1
+fi
+
+# En MSYS2/MinGW el venv suele mezclar rutas Win/Unix y romper encodings; usa python3 del sistema.
+case "$(uname -s 2>/dev/null)" in
+  MSYS*|MINGW*)
+    echo "MSYS/MinGW: omitiendo .venv; usa 'python3 -m pip install -r requirements.txt' si hace falta."
+    ;;
+  *)
+    python3 -m venv .venv
+    # shellcheck source=/dev/null
+    source .venv/bin/activate
+    python3 -m pip -q install -U -r requirements.txt 2>/dev/null || \
+      echo "Advertencia: pip install falló; ejecuta 'python3 -m ensurepip' o instala dependencias a mano."
+    ;;
+esac
+
+_demoscene_write_env_mk
+
+echo "Demoscene + toolchain Bartman (m68k-amiga-elf) en ${DEMOSCENE_ROOT}"
+echo "WIN32=${WIN32}"

@@ -153,7 +153,7 @@ static void Kill(void) {
 }
 
 /* Blitter line mode (EOR single-pixel) into one bitplane; shared setup in DrawStripes. */
-static void DrawLine(void *data asm("a2"), short x1 asm("d2"), short y1 asm("d3"), short x2 asm("d4"), short y2 asm("d5")) {
+static void DrawLine(void *data __ASM_REG_PARM("a2"), short x1 __ASM_REG_PARM("d2"), short y1 __ASM_REG_PARM("d3"), short x2 __ASM_REG_PARM("d4"), short y2 __ASM_REG_PARM("d5")) {
   u_short bltcon1 = LINEMODE | ONEDOT;
   void *start = data;
   short dx, dy, derr;

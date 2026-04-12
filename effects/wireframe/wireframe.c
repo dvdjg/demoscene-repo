@@ -126,7 +126,7 @@ static void UpdateFaceVisibilityFast(Object3D *object) {
 
 /* Walk front faces; mark vertices/edges so TransformVertices projects drawn edges only. */
 static void UpdateEdgeVisibility(Object3D *object) {
-  register short s asm("d2") = 1;
+  register short s __ASM_REG_PARM("d2") = 1;
 
   void *_objdat = object->objdat;
   short *group = object->faceGroups;
@@ -135,7 +135,7 @@ static void UpdateEdgeVisibility(Object3D *object) {
   do {
     while ((f = *group++)) {
       if (FACE(f)->flags >= 0) {
-        register short *index asm("a3") = (short *)(FACE(f)->indices);
+        register short *index __ASM_REG_PARM("a3") = (short *)(FACE(f)->indices);
         short vertices = FACE(f)->count - 3;
         short i;
 
@@ -228,7 +228,7 @@ static void TransformVertices(Object3D *object) {
  * `custom_` pinned to a6 for fast `_WaitBlitter` macros between line kicks.
  */
 static void DrawObject(Object3D *object, void *bplpt,
-                       CustomPtrT custom_ asm("a6"))
+                       CustomPtrT custom_ __ASM_REG_PARM("a6"))
 {
   void *_objdat = object->objdat;
   short *group = object->edgeGroups;

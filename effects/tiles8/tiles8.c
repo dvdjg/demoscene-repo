@@ -160,11 +160,11 @@ static void UpdateChunky(void) {
        * d0 = twist byte + offset; word index into cmap; store colour immediate;
        * @+ advances `row` past written data word; second `row++` skips next MOVE’s reg.
        */
-      asm volatile("moveq #0,d0\n"
-                   "moveb %0@+,d0\n"
-                   "addb %3,d0\n"
-                   "addw d0,d0\n"
-                   "movew %2@(d0:w),%1@+\n"
+      asm volatile("moveq #0,%%d0\n"
+                   "moveb %0@+,%%d0\n"
+                   "addb %3,%%d0\n"
+                   "addw %%d0,%%d0\n"
+                   "movew %2@(%%d0:w),%1@+\n"
                    : "+a" (data), "+a" (row)
                    : "a" (cmap), "d" (offset)
                    : "d0");
@@ -177,8 +177,8 @@ static void UpdateChunky(void) {
 /* Nibble-crawl animation: two tiles’ indices per 32-bit word, masked to 4 bits each. */
 static void UpdateTiles(void) {
   u_int *_tilescr = (u_int *)tilescr;
-  register u_int incr asm("d2") = 0x00100010;
-  register u_int mask asm("d3") = 0x00f000f0;
+  register u_int incr __ASM_REG_PARM("d2") = 0x00100010;
+  register u_int mask __ASM_REG_PARM("d3") = 0x00f000f0;
   short i;
 
   for (i = 0; i < VTILES * HTILES / 4; i++) {
@@ -222,15 +222,15 @@ static void RenderTiles(void) {
          * a0 = custom_->bltbpt … bltsize: program two tile indices as B/A, dst word,
          * then size. Post-increment on _tilescr consumes two u_short indices per tile.
          */
-        asm volatile("movel %0,a0\n"
-                     "movel %3,a1\n"
-                     "addaw %4@+,a1\n"
-                     "movel %3,a2\n"
-                     "addaw %4@+,a2\n"
-                     "movel a1,a0@+\n"
-                     "movel a2,a0@+\n"
-                     "movel %1,a0@+\n"
-                     "movew %2,a0@\n"
+        asm volatile("move.l %0,%%a0\n"
+                     "move.l %3,%%a1\n"
+                     "adda.w (%4)+,%%a1\n"
+                     "move.l %3,%%a2\n"
+                     "adda.w (%4)+,%%a2\n"
+                     "move.l %%a1,%%a0@+\n"
+                     "move.l %%a2,%%a0@+\n"
+                     "move.l %1,%%a0@+\n"
+                     "move.w %2,%%a0@\n"
                      : 
                      : "a" (custom_), "a" (dst), "d" (bltsize), "d" (_tile), "a" (_tilescr)
                      : "a0", "a1", "a2");

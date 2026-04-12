@@ -13,6 +13,10 @@
 # [a0] destination
 # [d1] count
 ENTRY(bzero)
+#if defined(__ELF__)
+        move.l 4(%sp),%a0
+        move.l 8(%sp),%d1
+#endif
         move.l  d2,-(sp)
         clr.l   d2
 

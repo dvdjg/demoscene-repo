@@ -14,6 +14,11 @@
 # [a1] dest address
 # [d1] count
 ENTRY(memcpy)
+#if defined(__ELF__)
+        move.l 4(%sp),%a1
+        move.l 8(%sp),%a0
+        move.l 12(%sp),%d1
+#endif
         move.l  a1,-(sp)                /* save dest address */
 
         cmp.l   a1,a0                   /* src after dest? */

@@ -164,7 +164,7 @@ static void RenderPipes(void) {
   short *stripe = stripes;
   short i;
   register short frame = frameCount;
-  register int center asm("d7") = - WIDTH * STEP / 2;
+  register int center __ASM_REG_PARM("d7") = - WIDTH * STEP / 2;
 
   for (i = 0; i < HEIGHT; i++) {
     CopLineT *lineIns = *lineTab++;

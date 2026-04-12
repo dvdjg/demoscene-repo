@@ -153,7 +153,7 @@ static void AhxPlayerTimeout(__unused CIATimerT *timer) {
   custom->color[0] = 0;
 }
 
-static void AhxSetTempo(u_short tempo asm("d0")) {
+static void AhxSetTempo(u_short tempo __ASM_REG_PARM("d0")) {
   SetupTimer(ahxtmr, AhxPlayerTimeout, tempo, 0);
 }
 

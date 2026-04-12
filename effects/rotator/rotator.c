@@ -278,13 +278,13 @@ static void Kill(void) {
   DeleteBitmap(screen[1]);
 }
 
-void GenDrawSpan(short du asm("d2"), short dv asm("d3"));
+void GenDrawSpan(short du __ASM_REG_PARM("d2"), short dv __ASM_REG_PARM("d3"));
 
-void RenderRotator(u_short *chunky asm("a0"),
-                   u_short *txtHi asm("a1"),
-                   u_short *txtLo asm("a2"),
-                   short U asm("d0"), short V asm("d1"),
-                   short dU asm("d2"), short dV asm("d3"));
+void RenderRotator(u_short *chunky __ASM_REG_PARM("a0"),
+                   u_short *txtHi __ASM_REG_PARM("a1"),
+                   u_short *txtLo __ASM_REG_PARM("a2"),
+                   short U __ASM_REG_PARM("d0"), short V __ASM_REG_PARM("d1"),
+                   short dU __ASM_REG_PARM("d2"), short dV __ASM_REG_PARM("d3"));
 
 PROFILE(Rotator);
 

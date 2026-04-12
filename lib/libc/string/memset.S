@@ -14,6 +14,11 @@
 # [d1] count
 # [d0] get fill character
 ENTRY(memset)
+#if defined(__ELF__)
+        move.l 4(%sp),%a0
+        move.l 8(%sp),%d0
+        move.l 12(%sp),%d1
+#endif
         move.l  d2,-(sp)
         move.l  a0,-(sp)
         move.b  d0,d2

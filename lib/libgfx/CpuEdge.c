@@ -33,10 +33,10 @@ void CpuEdgeSetup(const BitmapT *bitmap, u_short plane) {
  *   di  = floor(adx / dy)   // whole-pixel horizontal advance per row
  *   df  = adx % dy          // fractional residue accumulated in `xf`
  */
-void CpuEdge(short xs asm("d0"), short ys asm("d1"),
-             short xe asm("d2"), short ye asm("d3"))
+void CpuEdge(short xs __ASM_REG_PARM("d0"), short ys __ASM_REG_PARM("d1"),
+             short xe __ASM_REG_PARM("d2"), short ye __ASM_REG_PARM("d3"))
 {
-  register u_char *pixels asm("a0") = edge.pixels;
+  u_char *pixels = edge.pixels;
   short stride = edge.stride;
   /* dx,dy edge delta; di/df are integer and fractional X increments per Y step. */
   short dx, dy, di, df, n, xi, xf;

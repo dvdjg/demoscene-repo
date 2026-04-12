@@ -29,7 +29,7 @@
 
 typedef u_int jmp_buf[_JBLEN];
 
-__returns_twice int setjmp(jmp_buf asm("a0"));
-__noreturn void longjmp(jmp_buf asm("a0"), int asm("d1"));
+__returns_twice int setjmp(jmp_buf __ASM_REG_PARM("a0"));
+__noreturn void longjmp(jmp_buf __ASM_REG_PARM("a0"), int __ASM_REG_PARM("d1"));
 
 #endif /* !__SETJMP_H__ */

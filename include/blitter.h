@@ -105,7 +105,8 @@ extern const u_short LineMode[4][2];
 
 /* Common blitter macros. */
 static inline bool BlitterBusy(void) {
-  return custom->dmaconr & DMAF_BLTDONE;
+  u_short r = custom->dmaconr;
+  return (r & DMAF_BLTDONE) != 0;
 }
 
 /*
@@ -219,8 +220,8 @@ void BitmapSetArea(const BitmapT *bitmap, const Area2D *area, u_short color);
 
 void BlitterLineSetupFull(const BitmapT *bitmap, u_short plane,
                           u_short mode, u_short pattern);
-void BlitterLine(short x1 asm("d2"), short y1 asm("d3"),
-                 short x2 asm("d4"), short y2 asm("d5"));
+void BlitterLine(short x1 __ASM_REG_PARM("d2"), short y1 __ASM_REG_PARM("d3"),
+                 short x2 __ASM_REG_PARM("d4"), short y2 __ASM_REG_PARM("d5"));
 
 /* Other operations. */
 void BitmapAddSaturated(const BitmapT *dst, short dx, short dy,

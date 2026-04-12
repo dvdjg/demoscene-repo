@@ -8,6 +8,8 @@
 #ifndef __CINTER_H__
 #define __CINTER_H__
 
+#include "types.h"
+
 #define CINTER_DEGREES 16384
 
 typedef struct CinterChannel {
@@ -33,9 +35,9 @@ typedef struct CinterPlayer {
   int c_fix[3]; /* those are getting trashed by CinterInit */
 } CinterPlayerT;
 
-void CinterInit(void *music asm("a2"), void *instruments asm("a4"), 
-                CinterPlayerT *player asm("a6"));
-void CinterPlay1(CinterPlayerT *player asm("a6"));
-void CinterPlay2(CinterPlayerT *player asm("a6"));
+void CinterInit(void *music __ASM_REG_PARM("a2"), void *instruments __ASM_REG_PARM("a4"),
+                CinterPlayerT *player __ASM_REG_PARM("a6"));
+void CinterPlay1(CinterPlayerT *player __ASM_REG_PARM("a6"));
+void CinterPlay2(CinterPlayerT *player __ASM_REG_PARM("a6"));
 
 #endif 

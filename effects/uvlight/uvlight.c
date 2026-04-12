@@ -45,8 +45,8 @@ static __code u_short *texture;
 
 #if OPTIMIZED
 #define UVMapRenderSize (WIDTH * HEIGHT * 8 + 2)
-static void (*UVMapRender)(u_short *chunky asm("a0"), u_short *texture asm("a1"),
-                           u_short *shades asm("a2"));
+static void (*UVMapRender)(u_short *chunky __ASM_REG_PARM("a0"), u_short *texture __ASM_REG_PARM("a1"),
+                           u_short *shades __ASM_REG_PARM("a2"));
 
 /* JIT: per pixel either skip (transparent) or UV-fetch + shaded colour table lookup. */
 static void MakeUVMapRenderCode(void) {

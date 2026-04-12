@@ -35,7 +35,7 @@ static struct {
 #define BPLSIZE ((WIDTH * 4) * HEIGHT / 8) /* 2560 bytes */
 #define BLTSIZE ((WIDTH * 4) * HEIGHT / 2) /* 10240 bytes */
 
-static void ChunkyToPlanar(CustomPtrT custom_ asm("a0")) {
+static void ChunkyToPlanar(CustomPtrT custom_ __ASM_REG_PARM("a0")) {
   void *src = c2p.chunky;
   void *dst = c2p.chunky + BLTSIZE;
   void **bpl = c2p.bpl;
@@ -272,12 +272,12 @@ static void MainLoop(void) {
    * B C D
    *   E
    */
-  register uint16_t *chunkyPtr asm("a0") = (uint16_t *)chunky[active];
-  register uint32_t *Aptr      asm("a1") = (uint32_t *)fire;
-  register uint32_t *Bptr      asm("a2") = (uint32_t *)&fire[WIDTH - 1];
-  register uint32_t *Cptr      asm("a3") = (uint32_t *)&fire[WIDTH];
-  register uint32_t *Dptr      asm("a4") = (uint32_t *)&fire[WIDTH + 1];
-  register uint32_t *Eptr      asm("a6") = (uint32_t *)&fire[WIDTH * 2];
+  register uint16_t *chunkyPtr __ASM_REG_PARM("a0") = (uint16_t *)chunky[active];
+  register uint32_t *Aptr      __ASM_REG_PARM("a1") = (uint32_t *)fire;
+  register uint32_t *Bptr      __ASM_REG_PARM("a2") = (uint32_t *)&fire[WIDTH - 1];
+  register uint32_t *Cptr      __ASM_REG_PARM("a3") = (uint32_t *)&fire[WIDTH];
+  register uint32_t *Dptr      __ASM_REG_PARM("a4") = (uint32_t *)&fire[WIDTH + 1];
+  register uint32_t *Eptr      __ASM_REG_PARM("a6") = (uint32_t *)&fire[WIDTH * 2];
   register uint32_t *dt = dualtab;
 
   for (i = 0; i < (WIDTH * HEIGHT - 2 * WIDTH) / 8; ++i) {

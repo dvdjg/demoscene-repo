@@ -165,11 +165,12 @@ static void UpdateChunky(void) {
     do {
 #if OPTIMIZED
       /* Inline asm variant avoids extra loads/stores in inner loop. */
-      asm volatile("moveq #0,d0\n"
-                   "moveb %1@(%2:w),d0\n"
-                   "addb  %3@(%4:w),d0\n"
-                   "addw  d0,d0\n"
-                   "movew %5@(d0:w),%0@+\n"
+      /* %%d0: en inline asm, %% -> % para que gas reciba %d0 (coherente con %d1/%a2…). */
+      asm volatile("moveq #0,%%d0\n"
+                   "moveb %1@(%2:w),%%d0\n"
+                   "addb  %3@(%4:w),%%d0\n"
+                   "addw  %%d0,%%d0\n"
+                   "movew %5@(%%d0:w),%0@+\n"
                    "addql #2,%0\n"
                    : "+a" (ins)
                    : "a" (xbuf), "d" (x), "a" (ybuf), "d" (y), "a" (cmap)

@@ -29,14 +29,14 @@
 /* External optimized routines (usually hand-tuned asm).
  * They are ABI-compatible with C variants, but keep arguments in fixed
  * registers to reduce overhead in the inner benchmark loop. */
-void CpuEdgeOpt(void *bpl asm("a0"), short stride asm("a1"),
-                short xs asm("d0"), short ys asm("d1"),
-                short xe asm("d2"), short ye asm("d3"));
+void CpuEdgeOpt(void *bpl __ASM_REG_PARM("a0"), short stride __ASM_REG_PARM("a1"),
+                short xs __ASM_REG_PARM("d0"), short ys __ASM_REG_PARM("d1"),
+                short xe __ASM_REG_PARM("d2"), short ye __ASM_REG_PARM("d3"));
 
 
-void CpuLineOpt(void *bpl asm("a0"), short stride asm("a1"),
-                short xs asm("d0"), short ys asm("d1"),
-                short xe asm("d2"), short ye asm("d3"));
+void CpuLineOpt(void *bpl __ASM_REG_PARM("a0"), short stride __ASM_REG_PARM("a1"),
+                short xs __ASM_REG_PARM("d0"), short ys __ASM_REG_PARM("d1"),
+                short xe __ASM_REG_PARM("d2"), short ye __ASM_REG_PARM("d3"));
 
 /* Single bitplane framebuffer for line drawing. */
 static BitmapT *screen;

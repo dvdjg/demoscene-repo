@@ -159,7 +159,7 @@ static void MoveTiles(void *src, void *dst, short xshift, short yshift) {
   int *tile = tiles;
   int offset;
 
-  register volatile void *bltptr asm("a4") = &custom->bltcon1;
+  register volatile void *bltptr __ASM_REG_PARM("a4") = &custom->bltcon1;
 
   custom->bltadat = 0xffff;
   custom->bltbmod = BLTMOD;
@@ -172,8 +172,8 @@ static void MoveTiles(void *src, void *dst, short xshift, short yshift) {
   do {
     int srcoff = *tile++ + offset;
     int dstoff = *tile++ + offset;
-    register void *srcpt asm("a2") = src + ((srcoff >> 3) & ~1);
-    register void *dstpt asm("a3") = dst + ((dstoff >> 3) & ~1);
+    register void *srcpt __ASM_REG_PARM("a2") = src + ((srcoff >> 3) & ~1);
+    register void *dstpt __ASM_REG_PARM("a3") = dst + ((dstoff >> 3) & ~1);
     short sx = srcoff;
     short dx = dstoff;
     u_short bltcon1;

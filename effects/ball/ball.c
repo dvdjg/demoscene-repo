@@ -52,9 +52,9 @@ static CopListT *cp[2];
 #define UVMapRenderSize (WIDTH * HEIGHT / 2 * 10 + 2)
 /* JIT-style renderer assembled at runtime from precomputed UV offsets.
  * C equivalent is straightforward but significantly slower on 68000. */
-void (*UVMapRender)(u_char *chunky asm("a0"),
-                    u_char *textureHi asm("a1"),
-                    u_char *textureLo asm("a2"));
+void (*UVMapRender)(u_char *chunky __ASM_REG_PARM("a0"),
+                    u_char *textureHi __ASM_REG_PARM("a1"),
+                    u_char *textureLo __ASM_REG_PARM("a2"));
 
 /*
  * PixmapToTexture — expand one 4bpp chunky texel stream into parallel hi/lo buffers.

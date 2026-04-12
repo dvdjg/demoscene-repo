@@ -43,6 +43,10 @@
  * ABI: a0 = jmp_buf, d1 = int value to return from setjmp (per setjmp.h).
  */
 ENTRY(longjmp)
+#if defined(__ELF__)
+        move.l 4(%sp),%a0
+        move.l 8(%sp),%d1
+#endif
         movem.l (a0)+,d2-d7/a2-a7       /* restore callee-saved regs incl. SP */
         move.l  (a0),(sp)               /* patch return address for upcoming rts */
         rts

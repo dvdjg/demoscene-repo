@@ -201,11 +201,11 @@ static void SetLineColor(short *s) {
 /*
  * Insertion sort by increasing z (draw far stripes first, near on top — though here
  * all spans are opaque colour lines, order mainly affects overlap appearance).
- * `register short n asm("d7")` pins the loop counter for the hand-tuned inner loop.
+ * `register short n __ASM_REG_PARM("d7")` pins the loop counter for the hand-tuned inner loop.
  */
 static void SortStripes(StripeT *table) {
   StripeT *ptr = table + 1;
-  register short n asm("d7") = STRIPES - 2;
+  register short n __ASM_REG_PARM("d7") = STRIPES - 2;
 
   do {
     StripeT *curr = ptr;

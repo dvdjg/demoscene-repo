@@ -9,6 +9,9 @@ _UAEFSDB.___
 # toolchain files
 gdb-dashboard
 .gdb_history
+.force-linux-demoscene-toolchain
+.demoscene-env.mk
+*.elf
 
 # executable files, floppy & rom images and archives
 *.adf
@@ -29,6 +32,9 @@ gdb-dashboard
 *.bak
 *.old
 *~
+
+# Binarios Go compilados bajo WSL (Windows host)
+tools/*/*-linux
 
 # Build system files
 *.pyc

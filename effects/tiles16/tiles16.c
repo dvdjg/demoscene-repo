@@ -157,7 +157,7 @@ void TriggerRefresh(short x, short y, short w __unused, short h __unused)
  * than reloading from global each time on some assemblers).
  */
 static void UpdateTiles(BitmapT *screen, short x, short y,
-                        CustomPtrT custom_ asm("a6"))
+                        CustomPtrT custom_ __ASM_REG_PARM("a6"))
 {
   short *map = tilemap;
   void *ptrs = tileptrs;

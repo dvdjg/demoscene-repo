@@ -43,9 +43,9 @@ static CopInsPairT *bplptr;
 #include "data/uvmap-rgb.c"
 
 #define UVMapRenderSize (uvmap_width * uvmap_height * 8 + 2)
-typedef void (*UVMapRenderT)(u_short *chunky asm("a0"),
-                             u_short *offsets asm("a1"),
-                             u_short *texture asm("a2"));
+typedef void (*UVMapRenderT)(u_short *chunky __ASM_REG_PARM("a0"),
+                             u_short *offsets __ASM_REG_PARM("a1"),
+                             u_short *texture __ASM_REG_PARM("a2"));
 /* MEMF_PUBLIC buffer holding generated 68000 (not a normal C function pointer target). */
 static UVMapRenderT UVMapRender;
 /* Per-row byte pairs into texture / offset table — animated in ControlOffsets. */

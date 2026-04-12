@@ -159,11 +159,11 @@ static void Kill(void) {
   DeleteCopList(ballCopList1.cp);
 }
 
-extern void PlotTextureAsm(char *copperDst asm("a0"),
-                           char *texture   asm("a1"),
-                           int  uvPosition asm("d5"),
-                           int  uvDeltaRow asm("d6"),
-                           int  uvDeltaCol asm("d1"));
+extern void PlotTextureAsm(char *copperDst __ASM_REG_PARM("a0"),
+                           char *texture   __ASM_REG_PARM("a1"),
+                           int  uvPosition __ASM_REG_PARM("d5"),
+                           int  uvDeltaRow __ASM_REG_PARM("d6"),
+                           int  uvDeltaCol __ASM_REG_PARM("d1"));
 
 // Pack u/v values into a longword to be used by the inner loop.
 //
