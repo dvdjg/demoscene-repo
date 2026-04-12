@@ -1,0 +1,17 @@
+{
+  "files.exclude": {
+    ".ackrc": true,
+    "cscope.out": true,
+    "tags": true
+  },
+  "C_Cpp.errorSquiggles": "Disabled",
+  "task.autoDetect": "off",
+  "debug.openDebug": "openOnSessionStart",
+  "effect": "${fileDirnameBasename}",
+  "[m68k]": {
+    "editor.rulers": []
+  },
+  "demoscene.amigaElfGcc": "${env:USERPROFILE}/.cursor/extensions/bartmanabyss.amiga-debug-1.7.9/bin/win32/opt/bin/m68k-amiga-elf-gcc.exe",
+  "demoscene.amigaElfGdb": "${env:USERPROFILE}/.cursor/extensions/bartmanabyss.amiga-debug-1.7.9/bin/win32/opt/bin/m68k-amiga-elf-gdb.exe",
+  "C_Cpp_Runner.msvcBatchPath": ""
+}

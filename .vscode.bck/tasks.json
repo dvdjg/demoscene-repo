@@ -1,0 +1,180 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+
+    // BaseTaskConfiguration
+    "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": true
+    },
+
+    // Cursor no expande "base": "$gcc" como VS Code; usamos un matcher explícito estilo GCC.
+    "problemMatcher": {
+        "owner": "gcc",
+        "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+        ],
+        "pattern": {
+            "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "severity": 4,
+            "message": 5
+        }
+    },
+
+    // Entorno: tools/with-demoscene-env.sh → por defecto activate-barto (Bartman);
+    // si falla, activate (.deb). Con .force-linux-demoscene-toolchain solo activate.
+    // Sustituye ${config:effect} (p. ej. fileDirnameBasename en settings.json).
+    "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {}
+    },
+
+    // TaskConfiguration
+    "tasks": [
+        {
+            "label": "CLEAN",
+            "detail": "Clean output files of single effect ________________________ (Shift+Cmd+C)",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make clean -C \"${workspaceFolder}/effects/${config:effect}\"",
+            "group": "build"
+        },
+        {
+            "label": "CLEAN ALL",
+            "detail": "Clean all output files ______________________ (Shift+Cmd+A, Shift+Cmd+C)",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make clean -C \"${workspaceFolder}\"",
+            "group": "build"
+        },
+        {
+            "label": "BUILD",
+            "detail": "Build single effect ________________________________________ (Shift+Cmd+B)",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make --no-print-directory -j8 -C \"${workspaceFolder}/effects/${config:effect}\"",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "BUILD-DEBUG",
+            "detail": "Build effect with DEBUGBUILD=1 (locals visibles en GDB)",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make DEBUGBUILD=1 clean -C \"${workspaceFolder}/effects/${config:effect}\" && bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make --no-print-directory -j8 DEBUGBUILD=1 -C \"${workspaceFolder}/effects/${config:effect}\"",
+            "group": "build"
+        },
+        {
+            "label": "BUILD ALL",
+            "detail": "Build all effects ___________________________ (Shift+Cmd+A, Shift+Cmd+B)",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make --no-print-directory -j8 -C \"${workspaceFolder}\"",
+            "group": "build"
+        },
+        {
+            "label": "RUN",
+            "detail": "Run the effect without debugging ________________________ (Shift+Cmd+R)",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make --no-print-directory -j8 run -C \"${workspaceFolder}/effects/${config:effect}\"",
+            "group": "none"
+        },
+        {
+            "label": "DEBUG",
+            "detail": "make debug (GDB en tmux, sin VS Code). Para Amiga GDB usa F5 o Run and Debug.",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make --no-print-directory -j8 debug -C \"${workspaceFolder}/effects/${config:effect}\"",
+            "group": "none"
+        },
+        {
+            "label": "gdbserver",
+            "detail": "Run effect and start gdbserver on localhost:2345",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make --no-print-directory -j8 debug DEBUGGER=gdbserver -C \"${workspaceFolder}/effects/${config:effect}\"",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".",
+                    "endsPattern": "Listening for gdb connection at localhost:2345"
+                }
+            },
+            "group": "none"
+        },
+        {
+            "label": "gdbserver-only",
+            "detail": "Solo WinUAE/gdbserver (sin recompilar). Ejecuta BUILD antes si cambiaste código.",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make -C \"${workspaceFolder}/effects/${config:effect}\" gdbserver-launch",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".",
+                    "endsPattern": "Listening for gdb connection at localhost:2345"
+                }
+            },
+            "group": "none"
+        },
+        {
+            "label": "gdbserver-debug",
+            "detail": "Clean+build DEBUGBUILD=1, luego gdbserver (preLaunch para Amiga GDB debug)",
+            "type": "shell",
+            "command": "bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make DEBUGBUILD=1 clean -C \"${workspaceFolder}/effects/${config:effect}\" && bash \"${workspaceFolder}/tools/with-demoscene-env.sh\" make --no-print-directory -j8 DEBUGBUILD=1 debug DEBUGGER=gdbserver -C \"${workspaceFolder}/effects/${config:effect}\"",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".",
+                    "endsPattern": "Listening for gdb connection at localhost:2345"
+                }
+            },
+            "group": "none"
+        }
+    ]
+}

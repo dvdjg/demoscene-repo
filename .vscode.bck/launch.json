@@ -1,0 +1,78 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Amiga GDB:demoscene",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${config:effect}.exe.dbg",
+      "cwd": "${workspaceFolder}/effects/${config:effect}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${config:demoscene.amigaElfGdb}",
+      "miDebuggerServerAddress": "localhost:2345",
+      "setupCommands": [
+        {
+          "text": "set tcp connect-timeout 30",
+          "description": "Set timeout limit in seconds for socket connection to debug server",
+          "ignoreFailures": false
+        }
+      ],
+      "preLaunchTask": "gdbserver"
+    },
+    {
+      "name": "Amiga GDB:demoscene (sin rebuild)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${config:effect}.exe.dbg",
+      "cwd": "${workspaceFolder}/effects/${config:effect}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${config:demoscene.amigaElfGdb}",
+      "miDebuggerServerAddress": "localhost:2345",
+      "setupCommands": [
+        {
+          "text": "set tcp connect-timeout 30",
+          "description": "Set timeout limit in seconds for socket connection to debug server",
+          "ignoreFailures": false
+        }
+      ],
+      "preLaunchTask": "gdbserver-only"
+    },
+    {
+      "name": "Amiga GDB debug",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${config:effect}.exe.dbg",
+      "cwd": "${workspaceFolder}/effects/${config:effect}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${config:demoscene.amigaElfGdb}",
+      "miDebuggerServerAddress": "localhost:8888",
+      "setupCommands": [
+        {
+          "text": "set tcp connect-timeout 30",
+          "description": "Set timeout limit in seconds for socket connection to debug server",
+          "ignoreFailures": false
+        }
+      ],
+      "preLaunchTask": "gdbserver-debug"
+    },
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "c:/Users/David/Documents/Programa/Amiga-Downloads/demoscene/demoscene-repo/effects/cathedral",
+      "program": "c:/Users/David/Documents/Programa/Amiga-Downloads/demoscene/demoscene-repo/effects/cathedral/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}

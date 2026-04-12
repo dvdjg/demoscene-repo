@@ -1,0 +1,34 @@
+{
+  "configurations": [
+    {
+      "name": "Amiga GCC",
+      "includePath": [
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/system",
+        "${workspaceFolder}/lib",
+        "${fileDirname}",
+        "${workspaceFolder}"
+      ],
+      "defines": [
+        "__CONSTLIBBASEDECL__=const",
+        "__stdargs="
+      ],
+      "cStandard": "c99",
+      "cppStandard": "gnu++23",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "${config:demoscene.amigaElfGcc}",
+      "compilerArgs": [
+        "-m68000",
+        "-ffreestanding",
+        "-fno-common",
+        "-O2",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-use-cxa-atexit",
+        "-fno-threadsafe-statics",
+        "-I${workspaceFolder}/include"
+      ]
+    }
+  ],
+  "version": 4
+}
